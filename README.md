@@ -7,8 +7,8 @@ and every conversation lands in one inbox. Sign up at [hollo.so](https://hollo.s
 | Folder          | Platform                   | Install                                                               | Guide                                                         |
 | --------------- | -------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `ios/`          | Swift (SwiftUI and UIKit)  | Swift Package Manager: `https://github.com/karimrashed017/hollo-sdks` | [iOS quickstart](https://hollo.so/docs/quickstart)            |
-| `android/`      | Kotlin (Compose and Views) | JitPack: `com.github.karimrashed017.hollo-sdks:hollo`                 | [Android quickstart](https://hollo.so/docs/android)           |
-| `react-native/` | React Native and Expo      | npm: `@hollo/react-native`                                            | [React Native quickstart](https://hollo.so/docs/react-native) |
+| `android/`      | Kotlin (Compose and Views) | JitPack: `com.github.karimrashed017:hollo-sdks`                       | [Android quickstart](https://hollo.so/docs/android)           |
+| `react-native/` | React Native and Expo      | npm: `@hollo-so/react-native`                                         | [React Native quickstart](https://hollo.so/docs/react-native) |
 | `flutter/`      | Flutter (pure Dart)        | Git dependency on this repo with `path: flutter`                      | [Flutter quickstart](https://hollo.so/docs/flutter)           |
 
 Each SDK has the same concepts: `start(appKey)`, `present()`, `identify(...)`,

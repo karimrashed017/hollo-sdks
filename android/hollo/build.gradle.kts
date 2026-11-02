@@ -65,7 +65,7 @@ dependencies {
 }
 
 // JitPack builds the public SDK repo with publishToMavenLocal, and serves it
-// as com.github.karimrashed017.hollo-sdks:hollo:<tag>.
+// as com.github.karimrashed017:hollo-sdks:<tag>.
 publishing {
     publications {
         register<MavenPublication>("release") {

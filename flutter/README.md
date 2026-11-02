@@ -45,7 +45,7 @@ If your app already has a navigator key, set `Hollo.navigatorKey = yourKey`, or 
 | `Hollo.track('paywall_declined')`                   | Reports an event for automations.                                |
 | `Hollo.setSubscriber(true)`                         | Whether the user pays.                                           |
 | `Hollo.registerPush(token)`                         | Saves the FCM token from firebase_messaging (null turns it off). |
-| `Hollo.handle(message.data)`            | Opens the chat for a tapped Hollo notification.                  |
+| `Hollo.handle(message.data)`                        | Opens the chat for a tapped Hollo notification.                  |
 | `Hollo.onPushPermission = () async => token`        | Lets the chat ask for notifications after the first message.     |
 | `Hollo.theme`, `Hollo.darkTheme`, `Hollo.themeMode` | Colours, title and font. Black and white by default.             |
 
