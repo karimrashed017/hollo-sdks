@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only the window behind the Compose chat; Compose draws everything else. -->
+    <style name="Hollo.Theme.Chat" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/hollo_chat_background</item>
+    </style>
+
+    <color name="hollo_chat_background">#FFFFFFFF</color>
+</resources>

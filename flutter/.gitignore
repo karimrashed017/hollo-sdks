@@ -1,0 +1,5 @@
+.dart_tool/
+.packages
+build/
+# A package doesn't commit its lockfile; apps that use it do.
+pubspec.lock

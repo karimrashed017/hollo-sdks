@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <!-- Hollo.present() opens this, so apps don't declare anything. -->
+        <activity
+            android:name="so.hollo.HolloChatActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Hollo.Theme.Chat"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

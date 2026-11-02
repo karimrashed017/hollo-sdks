@@ -1,0 +1,5 @@
+# JitPack builds the Android SDK from this public repo for each tag.
+jdk:
+  - openjdk17
+install:
+  - cd android && chmod +x gradlew && ./gradlew :hollo:publishToMavenLocal -PholloVersion=$VERSION --stacktrace

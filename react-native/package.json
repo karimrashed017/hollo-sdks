@@ -1,0 +1,34 @@
+{
+  "name": "@hollo/react-native",
+  "version": "0.1.0",
+  "description": "Hollo in-app support chat for React Native and Expo apps.",
+  "license": "UNLICENSED",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "react-native": "src/index.tsx",
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "app.plugin.js",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": "*",
+    "react": "*",
+    "react-native": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karimrashed017/hollo-sdks.git",
+    "directory": "react-native"
+  },
+  "homepage": "https://hollo.so/docs/react-native",
+  "keywords": [
+    "support",
+    "chat",
+    "in-app",
+    "react-native",
+    "expo",
+    "hollo"
+  ]
+}

@@ -1,0 +1,494 @@
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import type { HolloMessage, HolloOffer } from "./client";
+import { reviewUrl } from "./links";
+import type { HolloState, HolloStore } from "./store";
+
+// The native chat screen. Black and white by default; pass a theme to match
+// the host app.
+
+export type HolloTheme = {
+  accent: string;
+  background: string;
+  text: string;
+  muted: string;
+  bubble: string;
+  title: string;
+};
+
+export const defaultTheme: HolloTheme = {
+  accent: "#0B0B0C",
+  background: "#FFFFFF",
+  text: "#0B0B0C",
+  muted: "#8A8A8E",
+  bubble: "#F1F1F0",
+  title: "Support",
+};
+
+export function useStore(store: HolloStore) {
+  return useSyncExternalStore(store.subscribe, store.getState, store.getState);
+}
+
+export function HolloChat({
+  store,
+  theme = defaultTheme,
+  onClose,
+  onOffer,
+  onLink,
+}: {
+  store: HolloStore;
+  theme?: HolloTheme;
+  onClose?: () => void;
+  onOffer?: (offer: HolloOffer) => void;
+  onLink?: (message: HolloMessage) => void;
+}) {
+  const state = useStore(store);
+  const profile = state.profile;
+  const [draft, setDraft] = useState("");
+  const list = useRef<FlatList<HolloMessage>>(null);
+
+  // Embedded chats count as open while they're on screen.
+  useEffect(() => {
+    if (onClose) return;
+    store.setOpen(true);
+    return () => store.setOpen(false);
+  }, [store, onClose]);
+
+  async function send() {
+    const text = draft;
+    setDraft("");
+    try {
+      await store.send(text);
+    } catch {
+      setDraft(text);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.screen, { backgroundColor: theme.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={styles.header}>
+        <Avatar photo={profile.photo} theme={theme} size={36} />
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {profile.name ?? theme.title}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.muted }]}>
+            {profile.role ?? "We usually reply in a few minutes"}
+          </Text>
+        </View>
+        {onClose && (
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close support chat"
+            hitSlop={12}
+          >
+            <Text style={[styles.close, { color: theme.text }]}>Done</Text>
+          </Pressable>
+        )}
+      </View>
+
+      <FlatList
+        ref={list}
+        data={state.messages}
+        keyExtractor={(m) => m.id}
+        contentContainerStyle={styles.messages}
+        onContentSizeChange={() =>
+          list.current?.scrollToEnd({ animated: true })
+        }
+        ListFooterComponent={
+          <PushFooter store={store} state={state} theme={theme} />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            {profile.photo && (
+              <Avatar photo={profile.photo} theme={theme} size={72} />
+            )}
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>
+              How can we help?
+            </Text>
+            <Text style={[styles.emptyText, { color: theme.muted }]}>
+              {profile.welcome ??
+                "Send us a message and we'll get back to you right here."}
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          if (
+            item.kind === "review_request" ||
+            item.kind === "offer" ||
+            item.kind === "link"
+          ) {
+            return (
+              <Card
+                message={item}
+                theme={theme}
+                onOffer={onOffer}
+                onLink={onLink}
+              />
+            );
+          }
+          const mine = item.sender === "end_user";
+          return (
+            <View
+              style={[
+                styles.bubble,
+                mine
+                  ? [styles.mine, { backgroundColor: theme.accent }]
+                  : [styles.theirs, { backgroundColor: theme.bubble }],
+              ]}
+            >
+              {item.sender === "ai" && (
+                <Text style={[styles.label, { color: theme.muted }]}>AI</Text>
+              )}
+              {item.sender === "team" && profile.name && (
+                <Text style={[styles.label, { color: theme.muted }]}>
+                  {profile.name}
+                </Text>
+              )}
+              <Text
+                style={{
+                  color: mine ? theme.background : theme.text,
+                  fontSize: 15,
+                  lineHeight: 21,
+                }}
+              >
+                {item.body}
+              </Text>
+            </View>
+          );
+        }}
+      />
+
+      {state.error && (
+        <Text style={[styles.error, { color: theme.muted }]}>
+          Couldn&apos;t reach support. Retrying…
+        </Text>
+      )}
+
+      <View style={styles.composer}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Message"
+          placeholderTextColor={theme.muted}
+          multiline
+          maxLength={4000}
+          style={[
+            styles.input,
+            { color: theme.text, borderColor: theme.bubble },
+          ]}
+          accessibilityLabel="Message"
+        />
+        <Pressable
+          onPress={send}
+          disabled={!draft.trim() || state.sending}
+          accessibilityRole="button"
+          accessibilityLabel="Send message"
+          style={[
+            styles.send,
+            {
+              backgroundColor: theme.accent,
+              opacity: !draft.trim() || state.sending ? 0.35 : 1,
+            },
+          ]}
+        >
+          {state.sending ? (
+            <ActivityIndicator color={theme.background} size="small" />
+          ) : (
+            <Text style={{ color: theme.background, fontSize: 17 }}>↑</Text>
+          )}
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+/** A review request, offer or link the team sent, with one button. */
+/**
+ * Under the user's latest message: the card asking to turn on notifications
+ * (F-40), or a line saying they'll be notified of the reply (F-16).
+ */
+function PushFooter({
+  store,
+  state,
+  theme,
+}: {
+  store: HolloStore;
+  state: HolloState;
+  theme: HolloTheme;
+}) {
+  const waiting = state.messages.at(-1)?.sender === "end_user";
+  if (state.askPush) {
+    return (
+      <View style={[styles.card, { borderColor: theme.bubble }]}>
+        <Text style={[styles.cardText, { color: theme.text }]}>
+          {state.push.permissionCard === "replies_offers"
+            ? "Turn on notifications to hear about replies and offers?"
+            : "Turn on notifications so you know when we reply?"}
+        </Text>
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={() => void store.answerPushCard(false)}
+            accessibilityRole="button"
+            style={[
+              styles.cardButton,
+              styles.cardButtonHalf,
+              { borderColor: theme.bubble, borderWidth: 1 },
+            ]}
+          >
+            <Text style={{ color: theme.text }}>No thanks</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void store.answerPushCard(true)}
+            accessibilityRole="button"
+            style={[
+              styles.cardButton,
+              styles.cardButtonHalf,
+              { backgroundColor: theme.accent },
+            ]}
+          >
+            <Text style={{ color: theme.background, fontWeight: "600" }}>
+              Continue
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+  if (waiting && state.pushRegistered && state.push.notifyLine) {
+    return (
+      <Text style={[styles.notifyLine, { color: theme.muted }]}>
+        {"We'll send you a notification when we reply."}
+      </Text>
+    );
+  }
+  return null;
+}
+
+/** The owner's photo when they've added one, otherwise the Hollo dot. */
+function Avatar({
+  photo,
+  theme,
+  size,
+}: {
+  photo?: string;
+  theme: HolloTheme;
+  size: number;
+}) {
+  const round = { width: size, height: size, borderRadius: size / 2 };
+  if (photo) {
+    return (
+      <Image
+        source={{ uri: photo }}
+        style={[round, { backgroundColor: theme.bubble }]}
+        accessibilityIgnoresInvertColors
+      />
+    );
+  }
+  return (
+    <View style={[styles.avatar, round, { backgroundColor: theme.accent }]}>
+      <View style={styles.avatarDot} />
+    </View>
+  );
+}
+
+function Card({
+  message,
+  theme,
+  onOffer,
+  onLink,
+}: {
+  message: HolloMessage;
+  theme: HolloTheme;
+  onOffer?: (offer: HolloOffer) => void;
+  onLink?: (message: HolloMessage) => void;
+}) {
+  const p = message.payload ?? {};
+  const str = (k: string) => (typeof p[k] === "string" ? (p[k] as string) : "");
+  const review = message.kind === "review_request";
+  const link = message.kind === "link";
+  // Review requests carry the team's wording in the user's language.
+  const title = review ? "" : link ? "" : str("title");
+  const text = review
+    ? message.body || "Enjoying the app? A quick review helps us a lot."
+    : link
+      ? message.body
+      : str("description");
+  const cta = review
+    ? str("cta") || "Leave a review"
+    : link
+      ? str("label") || "Open"
+      : str("cta") || "See offer";
+
+  function press() {
+    if (review) {
+      const url = reviewUrl(Platform.OS, p);
+      if (url) void Linking.openURL(url).catch(() => {});
+    } else if (link) {
+      onLink?.(message);
+    } else {
+      onOffer?.({ ref: str("ref"), title: str("title") });
+    }
+  }
+
+  return (
+    <View style={[styles.card, { borderColor: theme.bubble }]}>
+      {!!title && (
+        <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
+      )}
+      {!!text && (
+        <Text style={[styles.cardText, { color: theme.muted }]}>{text}</Text>
+      )}
+      <Pressable
+        onPress={press}
+        accessibilityRole="button"
+        style={[styles.cardButton, { backgroundColor: theme.accent }]}
+      >
+        <Text style={{ color: theme.background, fontWeight: "600" }}>
+          {cta}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Hosts the chat sheet that Hollo.present() opens. */
+export function HolloSheet({
+  store,
+  theme,
+  onOffer,
+  onLink,
+}: {
+  store: HolloStore;
+  theme?: HolloTheme;
+  onOffer?: (offer: HolloOffer) => void;
+  onLink?: (message: HolloMessage) => void;
+}) {
+  const { open } = useStore(store);
+  return (
+    <Modal
+      visible={open}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={() => store.setOpen(false)}
+    >
+      <HolloChat
+        store={store}
+        theme={theme}
+        onOffer={onOffer}
+        onLink={onLink}
+        onClose={() => store.setOpen(false)}
+      />
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E5E3",
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+  },
+  title: { fontSize: 16, fontWeight: "600" },
+  subtitle: { fontSize: 12, marginTop: 1 },
+  close: { fontSize: 16, fontWeight: "600" },
+  messages: { padding: 16, gap: 8, flexGrow: 1 },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  emptyTitle: { fontSize: 20, fontWeight: "600", marginTop: 12 },
+  emptyText: { fontSize: 14, marginTop: 6, textAlign: "center" },
+  bubble: {
+    maxWidth: "80%",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+  },
+  mine: { alignSelf: "flex-end", borderBottomRightRadius: 6 },
+  theirs: { alignSelf: "flex-start", borderBottomLeftRadius: 6 },
+  label: { fontSize: 11, marginBottom: 2 },
+  card: {
+    alignSelf: "stretch",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    gap: 6,
+  },
+  cardTitle: { fontSize: 16, fontWeight: "600" },
+  cardText: { fontSize: 14, lineHeight: 20 },
+  cardButton: {
+    marginTop: 8,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardActions: { flexDirection: "row", gap: 8 },
+  cardButtonHalf: { flex: 1 },
+  notifyLine: { alignSelf: "flex-end", fontSize: 12, marginTop: 2 },
+  error: { textAlign: "center", fontSize: 12, paddingBottom: 4 },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    padding: 12,
+    paddingBottom: Platform.OS === "ios" ? 28 : 12,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  send: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
