@@ -12,7 +12,7 @@ dependencies:
     git:
       url: https://github.com/karimrashed017/hollo-sdks.git
       path: flutter
-      ref: 0.1.4
+      ref: 0.1.5
 ```
 
 It uses `http`, `shared_preferences` (to keep the device token) and `url_launcher` (to open store pages and links). After adding it, stop the app and run `flutter run` again; a hot reload doesn't pick up new plugins.

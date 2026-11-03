@@ -79,7 +79,7 @@ export const Hollo = {
         os: `${Platform.OS} ${String(Platform.Version ?? "")}`.trim(),
         // Review requests and other team messages use it to pick wording.
         language: Intl.DateTimeFormat().resolvedOptions().locale,
-        sdk: "react-native 0.1.4",
+        sdk: "react-native 0.1.5",
       },
     });
   },

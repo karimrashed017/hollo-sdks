@@ -1,8 +1,8 @@
 {
   "name": "@hollo-so/react-native",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Hollo in-app support chat for React Native and Expo apps.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "main": "src/index.tsx",
   "types": "src/index.tsx",
   "react-native": "src/index.tsx",
@@ -10,7 +10,8 @@
     "src",
     "!src/**/*.test.ts",
     "app.plugin.js",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "*",

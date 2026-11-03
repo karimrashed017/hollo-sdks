@@ -10,7 +10,7 @@ import 'storage.dart';
 // http.Client. Talks to the SDK API at https://hollo.so/api/v1 with the app
 // key and this install's device token.
 
-const String holloSdkVersion = '0.1.4';
+const String holloSdkVersion = '0.1.5';
 const String holloApiUrl = 'https://hollo.so/api/v1';
 
 /// A failed Hollo call. [code] is the API's error code, like

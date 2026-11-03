@@ -17,3 +17,6 @@ hand-off and notification handling.
 
 Releases are tagged (`0.1.0`, …). The APIs are a preview and may change before
 1.0. Questions: contact@hollo.so.
+
+The SDKs are open source under the [MIT License](LICENSE). The Hollo service
+they connect to is not.

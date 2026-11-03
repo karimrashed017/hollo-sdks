@@ -71,8 +71,16 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "so.hollo"
             artifactId = "hollo"
-            version = providers.gradleProperty("holloVersion").getOrElse("0.1.4")
+            version = providers.gradleProperty("holloVersion").getOrElse("0.1.5")
             afterEvaluate { from(components["release"]) }
+            pom {
+                licenses {
+                    license {
+                        name = "MIT License"
+                        url = "https://opensource.org/licenses/MIT"
+                    }
+                }
+            }
         }
     }
 }

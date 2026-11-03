@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.4")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.5")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and
