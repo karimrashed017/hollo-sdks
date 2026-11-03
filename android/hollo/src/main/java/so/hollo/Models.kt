@@ -60,6 +60,29 @@ internal data class HolloPushSettings(
     val notifyLine: Boolean = true,
 )
 
+/** A dashboard colour for the light look, the dark look or both, as 0xFFRRGGBB. */
+internal data class RemoteColor(val light: Long? = null, val dark: Long? = null) {
+    /** The half for this look, or null so the app's own colour stays. */
+    fun pick(dark: Boolean): Long? = if (dark) this.dark else light
+}
+
+/**
+ * Chat colours and title set in the dashboard, applied over [HolloTheme] so
+ * the look changes without an app release. Every field is optional.
+ */
+internal data class RemoteTheme(
+    /** The user's bubbles, the send button and filled buttons. */
+    val accent: RemoteColor? = null,
+    /** Text and icons on accent surfaces. */
+    val onAccent: RemoteColor? = null,
+    val background: RemoteColor? = null,
+    /** Bubbles from the team and the AI. */
+    val incoming: RemoteColor? = null,
+    val incomingText: RemoteColor? = null,
+    val colorScheme: HolloColorScheme? = null,
+    val title: String? = null,
+)
+
 internal data class MessagesResponse(
     val messages: List<HolloMessage>,
     val unread: Int,
@@ -69,9 +92,13 @@ internal data class MessagesResponse(
     val open: Boolean,
     /** Show "Runs on Hollo" under the composer. Missing means yes. */
     val branding: Boolean = true,
+    /** Dashboard colours and title. Servers before SDK 0.1.4 leave it out. */
+    val theme: RemoteTheme? = null,
 )
 
 private val PERMISSION_CARDS = setOf("off", "replies", "replies_offers")
+private val HEX_COLOR = Regex("#[0-9A-Fa-f]{6}")
+private const val MAX_TITLE = 40
 
 internal fun JsonObject.string(key: String): String? {
     val value = this[key]
@@ -138,4 +165,32 @@ internal fun parseMessagesResponse(o: JsonObject): MessagesResponse =
         push = parsePushSettings(o["push"]),
         open = (o["open"] as? JsonPrimitive)?.booleanOrNull == true,
         branding = (o["branding"] as? JsonPrimitive)?.booleanOrNull != false,
+        theme = parseRemoteTheme(o["theme"]),
     )
+
+/** "#RRGGBB" as an opaque colour; anything else is null. */
+internal fun parseHexColor(value: String?): Long? =
+    if (value != null && HEX_COLOR.matches(value)) 0xFF000000L or value.substring(1).toLong(16) else null
+
+internal fun parseRemoteTheme(element: JsonElement?): RemoteTheme? {
+    val o = element as? JsonObject ?: return null
+    fun color(key: String): RemoteColor? {
+        val pair = o[key] as? JsonObject ?: return null
+        val color = RemoteColor(light = parseHexColor(pair.string("light")), dark = parseHexColor(pair.string("dark")))
+        return if (color.light == null && color.dark == null) null else color
+    }
+    return RemoteTheme(
+        accent = color("accent"),
+        onAccent = color("onAccent"),
+        background = color("background"),
+        incoming = color("incoming"),
+        incomingText = color("incomingText"),
+        colorScheme = when (o.string("colorScheme")) {
+            "light" -> HolloColorScheme.LIGHT
+            "dark" -> HolloColorScheme.DARK
+            "system" -> HolloColorScheme.SYSTEM
+            else -> null
+        },
+        title = o.string("title")?.trim()?.takeIf { it.isNotEmpty() }?.take(MAX_TITLE),
+    )
+}

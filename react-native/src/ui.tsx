@@ -16,27 +16,12 @@ import {
 import type { HolloMessage, HolloOffer } from "./client";
 import { reviewUrl } from "./links";
 import type { HolloState, HolloStore } from "./store";
+import { chatColors, type ChatColors, type HolloTheme } from "./theme";
 
 // The native chat screen. Black and white by default; pass a theme to match
-// the host app.
+// the host app. Colours set in the dashboard go over it.
 
-export type HolloTheme = {
-  accent: string;
-  background: string;
-  text: string;
-  muted: string;
-  bubble: string;
-  title: string;
-};
-
-export const defaultTheme: HolloTheme = {
-  accent: "#0B0B0C",
-  background: "#FFFFFF",
-  text: "#0B0B0C",
-  muted: "#8A8A8E",
-  bubble: "#F1F1F0",
-  title: "Support",
-};
+export { defaultTheme, type HolloTheme } from "./theme";
 
 export function useStore(store: HolloStore) {
   return useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -44,18 +29,19 @@ export function useStore(store: HolloStore) {
 
 export function HolloChat({
   store,
-  theme = defaultTheme,
+  theme: localTheme,
   onClose,
   onOffer,
   onLink,
 }: {
   store: HolloStore;
-  theme?: HolloTheme;
+  theme?: Partial<HolloTheme>;
   onClose?: () => void;
   onOffer?: (offer: HolloOffer) => void;
   onLink?: (message: HolloMessage) => void;
 }) {
   const state = useStore(store);
+  const theme = chatColors(localTheme, state.remoteTheme);
   const profile = state.profile;
   const [draft, setDraft] = useState("");
   const list = useRef<FlatList<HolloMessage>>(null);
@@ -164,7 +150,7 @@ export function HolloChat({
               )}
               <Text
                 style={{
-                  color: mine ? theme.background : theme.text,
+                  color: mine ? theme.onAccent : theme.incomingText,
                   fontSize: 15,
                   lineHeight: 21,
                 }}
@@ -216,9 +202,9 @@ export function HolloChat({
           ]}
         >
           {state.sending ? (
-            <ActivityIndicator color={theme.background} size="small" />
+            <ActivityIndicator color={theme.onAccent} size="small" />
           ) : (
-            <Text style={{ color: theme.background, fontSize: 17 }}>↑</Text>
+            <Text style={{ color: theme.onAccent, fontSize: 17 }}>↑</Text>
           )}
         </Pressable>
       </View>
@@ -240,7 +226,7 @@ function PushFooter({
 }: {
   store: HolloStore;
   state: HolloState;
-  theme: HolloTheme;
+  theme: ChatColors;
 }) {
   const waiting = state.messages.at(-1)?.sender === "end_user";
   if (state.askPush) {
@@ -272,7 +258,7 @@ function PushFooter({
               { backgroundColor: theme.accent },
             ]}
           >
-            <Text style={{ color: theme.background, fontWeight: "600" }}>
+            <Text style={{ color: theme.onAccent, fontWeight: "600" }}>
               Continue
             </Text>
           </Pressable>
@@ -297,7 +283,7 @@ function Avatar({
   size,
 }: {
   photo?: string;
-  theme: HolloTheme;
+  theme: ChatColors;
   size: number;
 }) {
   const round = { width: size, height: size, borderRadius: size / 2 };
@@ -312,7 +298,7 @@ function Avatar({
   }
   return (
     <View style={[styles.avatar, round, { backgroundColor: theme.accent }]}>
-      <View style={styles.avatarDot} />
+      <View style={[styles.avatarDot, { borderColor: theme.avatarRing }]} />
     </View>
   );
 }
@@ -383,7 +369,7 @@ function Card({
   onLink,
 }: {
   message: HolloMessage;
-  theme: HolloTheme;
+  theme: ChatColors;
   onOffer?: (offer: HolloOffer) => void;
   onLink?: (message: HolloMessage) => void;
 }) {
@@ -428,9 +414,7 @@ function Card({
         accessibilityRole="button"
         style={[styles.cardButton, { backgroundColor: theme.accent }]}
       >
-        <Text style={{ color: theme.background, fontWeight: "600" }}>
-          {cta}
-        </Text>
+        <Text style={{ color: theme.onAccent, fontWeight: "600" }}>{cta}</Text>
       </Pressable>
     </View>
   );
@@ -444,7 +428,7 @@ export function HolloSheet({
   onLink,
 }: {
   store: HolloStore;
-  theme?: HolloTheme;
+  theme?: Partial<HolloTheme>;
   onOffer?: (offer: HolloOffer) => void;
   onLink?: (message: HolloMessage) => void;
 }) {
@@ -491,7 +475,6 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     borderWidth: 3,
-    borderColor: "#FFFFFF",
   },
   title: { fontSize: 16, fontWeight: "600" },
   subtitle: { fontSize: 12, marginTop: 1 },

@@ -89,6 +89,61 @@ describe("HolloClient", () => {
     expect((await api.messages()).branding).toBe(false);
   });
 
+  it("reads the dashboard theme, keeping only well-formed values", async () => {
+    const storage = memoryStorage();
+    await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "hdt_saved");
+    let theme: unknown = {
+      accent: { light: "#FF5500", dark: "#ffaa77" },
+      onAccent: { light: "#FFFFFF", dark: "#000000" },
+      background: { light: "#FAFAFA", dark: "#101010" },
+      incoming: { light: "#EEEEEE", dark: "#222222" },
+      incomingText: { light: "#111111", dark: "#F0F0F0" },
+      colorScheme: "dark",
+      title: "  Driftwood help  ",
+    };
+    const server = fakeServer({
+      "GET /messages": () => [200, { messages: [], unread: 0, theme }],
+    });
+    const api = client(storage, server.fetch);
+
+    expect((await api.messages()).theme).toEqual({
+      accent: { light: "#FF5500", dark: "#FFAA77" },
+      onAccent: { light: "#FFFFFF", dark: "#000000" },
+      background: { light: "#FAFAFA", dark: "#101010" },
+      incoming: { light: "#EEEEEE", dark: "#222222" },
+      incomingText: { light: "#111111", dark: "#F0F0F0" },
+      colorScheme: "dark",
+      title: "Driftwood help",
+    });
+
+    // Partial: only what's set comes through.
+    theme = { accent: { dark: "#123456" }, colorScheme: "system" };
+    expect((await api.messages()).theme).toEqual({
+      accent: { dark: "#123456" },
+      colorScheme: "system",
+    });
+
+    // Malformed values are dropped, and the poll still works.
+    theme = {
+      accent: "#FF5500",
+      onAccent: { light: "#FFF", dark: 12 },
+      background: { light: "#GG0000", dark: "#00000080" },
+      incoming: null,
+      incomingText: { light: "#+12345" },
+      colorScheme: "sepia",
+      title: "   ",
+    };
+    expect((await api.messages()).theme).toEqual({});
+    theme = "blue";
+    expect((await api.messages()).theme).toBeUndefined();
+
+    // Older servers send no theme at all.
+    theme = undefined;
+    const response = await api.messages();
+    expect(response.theme).toBeUndefined();
+    expect(response.branding).toBe(true);
+  });
+
   it("registers again when the server has forgotten the device", async () => {
     const storage = memoryStorage();
     await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "hdt_old");

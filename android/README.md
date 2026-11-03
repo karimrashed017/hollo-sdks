@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.3")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.4")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and
@@ -64,6 +64,11 @@ Hollo.setSubscriber(true)
 val unread by Hollo.unreadCount.collectAsStateWithLifecycle()
 Hollo.theme = HolloTheme(light = HolloColors(accent = Color(0xFF0B0B0C)), title = "Help")
 ```
+
+Colours, the light/dark look and the title set on the app's page in the
+dashboard arrive with `GET /messages` (`theme`) and go over `Hollo.theme`,
+so they change without an app release. Anything the dashboard leaves unset
+keeps what you set in code.
 
 Push (FCM): Hollo doesn't depend on Firebase at runtime.
 

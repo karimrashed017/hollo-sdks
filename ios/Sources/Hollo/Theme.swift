@@ -59,28 +59,67 @@ public struct HolloTheme {
     }
 }
 
-/** The theme with Hollo's defaults filled in. */
+/**
+ * The theme with Hollo's defaults filled in, and the dashboard's colours on
+ * top of both. `scheme` is the look the chat is shown in, which picks the
+ * light or dark half of each dashboard colour.
+ */
 struct ChatStyle {
     let accent: Color
     let background: Color
     let userBubble: Color
     let teamBubble: Color
     let text: Color
+    /** Text in bubbles from the team and the AI. */
+    let incomingText: Color
     let muted: Color
     let hairline: Color
     let font: Font
+    let title: String?
     let theme: HolloTheme
+    private let fixedOnAccent: Color?
 
-    init(_ theme: HolloTheme) {
+    init(_ theme: HolloTheme, remote: RemoteTheme = RemoteTheme(), scheme: ColorScheme = .light) {
+        let dark = scheme == .dark
         self.theme = theme
-        accent = theme.accent ?? Ink.accent
-        background = theme.background ?? Color(uiColor: .systemBackground)
-        userBubble = theme.userBubble ?? accent
-        teamBubble = theme.teamBubble ?? Ink.bubble
+        let remoteAccent = remote.accent?.color(dark: dark)
+        accent = remoteAccent ?? theme.accent ?? Ink.accent
+        background = remote.background?.color(dark: dark) ?? theme.background ?? Color(uiColor: .systemBackground)
+        // The dashboard has one accent for both, so it wins over userBubble.
+        userBubble = remoteAccent ?? theme.userBubble ?? accent
+        teamBubble = remote.incoming?.color(dark: dark) ?? theme.teamBubble ?? Ink.bubble
         text = Ink.text
+        incomingText = remote.incomingText?.color(dark: dark) ?? Ink.text
         muted = Color(uiColor: .secondaryLabel)
         hairline = Color(uiColor: .separator)
         font = theme.font ?? .body
+        title = remote.title ?? theme.title
+        fixedOnAccent = remote.onAccent?.color(dark: dark)
+    }
+
+    /** Text and icons on an accent surface: the dashboard's, or whichever reads better. */
+    func onAccent(_ fill: Color, in environment: EnvironmentValues) -> Color {
+        fixedOnAccent ?? Ink.readable(on: fill, in: environment)
+    }
+
+    /** The dashboard's forced look, then the app's, then the system's. */
+    static func scheme(remote: RemoteTheme, local: ColorScheme?, system: ColorScheme) -> ColorScheme {
+        switch remote.colorScheme {
+        case .light?: return .light
+        case .dark?: return .dark
+        case .system?, nil: return local ?? system
+        }
+    }
+}
+
+extension RemoteTheme.Pair {
+    /** The half for this look, or nil so the app's own colour stays. */
+    func hex(dark: Bool) -> UInt32? {
+        dark ? self.dark : light
+    }
+
+    func color(dark: Bool) -> Color? {
+        hex(dark: dark).map(Ink.color)
     }
 }
 
@@ -94,6 +133,11 @@ enum Ink {
         Color(uiColor: UIColor { traits in
             uiColor(traits.userInterfaceStyle == .dark ? dark : light)
         })
+    }
+
+    /** A fixed colour from 0xRRGGBB, as the dashboard sends them. */
+    static func color(_ hex: UInt32) -> Color {
+        Color(uiColor: uiColor(hex))
     }
 
     private static func uiColor(_ hex: UInt32) -> UIColor {

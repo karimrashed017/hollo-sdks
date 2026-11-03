@@ -36,6 +36,8 @@ internal data class HolloState(
     val offline: Boolean = false,
     val profile: HolloProfile = HolloProfile(),
     val push: HolloPushSettings = HolloPushSettings(),
+    /** Colours and title from the dashboard, over Hollo.theme. */
+    val remoteTheme: RemoteTheme = RemoteTheme(),
     /** Show the "Runs on Hollo" footer. The server decides. */
     val branding: Boolean = true,
     /** This device sent Hollo a push token. */
@@ -135,6 +137,7 @@ internal class HolloStore(private val scope: CoroutineScope) {
                     messages = s.messages + response.messages.filter { it.id !in known },
                     profile = response.profile ?: s.profile,
                     push = response.push ?: s.push,
+                    remoteTheme = response.theme ?: s.remoteTheme,
                     branding = response.branding,
                     unread = if (s.open) 0 else response.unread,
                     error = null,

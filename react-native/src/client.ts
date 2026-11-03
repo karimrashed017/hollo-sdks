@@ -2,6 +2,8 @@
 // Talks to the SDK API at https://hollo.so/api/v1 with the app key and this
 // install's device token.
 
+import { parseTheme } from "./theme";
+
 export type Sender = "end_user" | "team" | "ai" | "system";
 
 export type HolloMessage = {
@@ -189,9 +191,15 @@ export class HolloClient {
       /** An automation asked to open the chat. */
       open?: boolean;
       branding?: boolean;
+      /** Dashboard colours and title; servers before 0.1.4 leave it out. */
+      theme?: unknown;
     }>(`/messages${query}`);
     // Show "Runs on Hollo" unless the server says not to.
-    return { ...data, branding: data.branding !== false };
+    return {
+      ...data,
+      branding: data.branding !== false,
+      theme: parseTheme(data.theme),
+    };
   }
 
   send(body: string) {

@@ -219,6 +219,80 @@ void main() {
       expect(page.push?.notifyLine, isFalse);
       expect(page.open, isTrue);
       expect(page.branding, isFalse);
+      expect(page.theme, isNull, reason: 'older servers send no theme');
+    });
+
+    test('parses a full dashboard theme', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'GET /messages': (_) => reply(200, {
+              'messages': [],
+              'unread': 0,
+              'theme': {
+                'accent': {'light': '#FF5500', 'dark': '#ffaa77'},
+                'onAccent': {'light': '#FFFFFF', 'dark': '#000000'},
+                'background': {'light': '#FAFAFA', 'dark': '#101010'},
+                'incoming': {'light': '#EEEEEE', 'dark': '#222222'},
+                'incomingText': {'light': '#111111', 'dark': '#F0F0F0'},
+                'colorScheme': 'dark',
+                'title': '  Driftwood help  ',
+              },
+            }),
+      });
+
+      final theme = (await clientFor(server.client).messages()).theme;
+
+      expect(
+        theme,
+        const HolloRemoteTheme(
+          accent: HolloRemoteColor(light: 0xFFFF5500, dark: 0xFFFFAA77),
+          onAccent: HolloRemoteColor(light: 0xFFFFFFFF, dark: 0xFF000000),
+          background: HolloRemoteColor(light: 0xFFFAFAFA, dark: 0xFF101010),
+          incoming: HolloRemoteColor(light: 0xFFEEEEEE, dark: 0xFF222222),
+          incomingText: HolloRemoteColor(light: 0xFF111111, dark: 0xFFF0F0F0),
+          colorScheme: 'dark',
+          title: 'Driftwood help',
+        ),
+      );
+    });
+
+    test('a partial theme keeps only what is set', () {
+      final theme = HolloRemoteTheme.fromJson(const {
+        'accent': {'dark': '#123456'},
+        'colorScheme': 'system',
+      });
+      expect(
+        theme,
+        const HolloRemoteTheme(
+          accent: HolloRemoteColor(dark: 0xFF123456),
+          colorScheme: 'system',
+        ),
+      );
+      // Only dark is set, so the light look keeps the app's accent.
+      expect(theme.accent?.pick(dark: true), 0xFF123456);
+      expect(theme.accent?.pick(dark: false), isNull);
+    });
+
+    test('malformed theme values are dropped', () async {
+      final theme = HolloRemoteTheme.fromJson(const {
+        'accent': '#FF5500',
+        'onAccent': {'light': '#FFF', 'dark': 12},
+        'background': {'light': '#GG0000', 'dark': '#00000080'},
+        'incoming': null,
+        'incomingText': {'light': '#+12345'},
+        'colorScheme': 'sepia',
+        'title': '   ',
+      });
+      expect(theme, const HolloRemoteTheme());
+
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'GET /messages': (_) =>
+            reply(200, {'messages': [], 'unread': 2, 'theme': 'blue'}),
+      });
+      final page = await clientFor(server.client).messages();
+      expect(page.theme, isNull);
+      expect(page.unread, 2);
     });
 
     test('polls with the last message time, encoded', () async {

@@ -1,5 +1,6 @@
 package so.hollo
 
+import androidx.compose.ui.graphics.Color
 import java.io.IOException
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -248,8 +249,90 @@ class HolloClientTest {
         assertFalse(response.open)
         assertTrue("Branding shows unless the server says no", response.branding)
         assertNull(response.profile)
+        assertNull("Older servers send no theme", response.theme)
         assertEquals("off", response.push?.permissionCard)
         assertEquals(true, response.push?.notifyLine)
+    }
+
+    @Test
+    fun parsesAFullTheme() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        val server = FakeServer(
+            mapOf(
+                "GET /messages" to { _: HolloHttpRequest ->
+                    200 to """
+                        {
+                          "messages": [],
+                          "theme": {
+                            "accent": {"light":"#FF5500","dark":"#ffaa77"},
+                            "onAccent": {"light":"#FFFFFF","dark":"#000000"},
+                            "background": {"light":"#FAFAFA","dark":"#101010"},
+                            "incoming": {"light":"#EEEEEE","dark":"#222222"},
+                            "incomingText": {"light":"#111111","dark":"#F0F0F0"},
+                            "colorScheme": "dark",
+                            "title": "  Driftwood help  "
+                          }
+                        }
+                    """.trimIndent()
+                },
+            ),
+        )
+        val theme = client(storage, server).messages().theme!!
+        assertEquals(RemoteColor(light = 0xFFFF5500, dark = 0xFFFFAA77), theme.accent)
+        assertEquals(RemoteColor(light = 0xFFFFFFFF, dark = 0xFF000000), theme.onAccent)
+        assertEquals(RemoteColor(light = 0xFFFAFAFA, dark = 0xFF101010), theme.background)
+        assertEquals(RemoteColor(light = 0xFFEEEEEE, dark = 0xFF222222), theme.incoming)
+        assertEquals(RemoteColor(light = 0xFF111111, dark = 0xFFF0F0F0), theme.incomingText)
+        assertEquals(HolloColorScheme.DARK, theme.colorScheme)
+        assertEquals("Driftwood help", theme.title)
+
+        // Forced dark beats the system and the app's own choice.
+        assertTrue(isDark(HolloTheme(colorScheme = HolloColorScheme.LIGHT), systemDark = false, remote = theme))
+        val colors = resolveColors(HolloTheme(), dark = true, remote = theme)
+        assertEquals(Color(0xFFFFAA77), colors.accent)
+        assertEquals(Color(0xFFFFAA77), colors.userBubble)
+        assertEquals(Color(0xFF000000), colors.onAccent)
+        assertEquals(Color(0xFF000000), colors.onUserBubble)
+        assertEquals(Color(0xFF101010), colors.background)
+        assertEquals(Color(0xFF222222), colors.teamBubble)
+        assertEquals(Color(0xFFF0F0F0), colors.onTeamBubble)
+    }
+
+    @Test
+    fun aPartialThemeKeepsTheAppsOwnLook() {
+        val theme = parseRemoteTheme(parseObject("""{"accent":{"dark":"#123456"},"colorScheme":"system"}"""))!!
+        assertEquals(RemoteTheme(accent = RemoteColor(dark = 0xFF123456), colorScheme = HolloColorScheme.SYSTEM), theme)
+
+        val app = HolloTheme(
+            light = HolloColors(accent = Color(0xFF0000FF), background = Color(0xFFFFF8F0)),
+            colorScheme = HolloColorScheme.DARK,
+        )
+        // "system" leaves the app's forced look alone.
+        assertTrue(isDark(app, systemDark = false, remote = theme))
+        assertFalse(isDark(HolloTheme(), systemDark = false, remote = theme))
+        // Only dark is set, so the light look is exactly the app's.
+        assertEquals(resolveColors(app, dark = false), resolveColors(app, dark = false, remote = theme))
+        assertEquals(Color(0xFF123456), resolveColors(app, dark = true, remote = theme).accent)
+    }
+
+    @Test
+    fun malformedThemeValuesAreDropped() {
+        val theme = parseRemoteTheme(
+            parseObject(
+                """
+                    {"accent":"#FF5500","onAccent":{"light":"#FFF","dark":12},
+                     "background":{"light":"#GG0000","dark":"#00000080"},"incoming":null,
+                     "incomingText":{"light":"#+12345"},"colorScheme":"sepia","title":"   "}
+                """.trimIndent(),
+            ),
+        )
+        assertEquals(RemoteTheme(), theme)
+        assertEquals(resolveColors(HolloTheme(), dark = false), resolveColors(HolloTheme(), dark = false, remote = theme!!))
+
+        val response = parseMessagesResponse(parseObject("""{"messages":[],"theme":"blue","unread":2}"""))
+        assertNull(response.theme)
+        assertEquals(2, response.unread)
     }
 
     @Test

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hollo/src/client.dart';
+import 'package:hollo/src/models.dart';
 import 'package:hollo/src/storage.dart';
 import 'package:hollo/src/store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,6 +52,38 @@ void main() {
     await store.refresh();
     expect(store.unreadCount.value, 1);
     expect(counts, [2, 0, 1]);
+  });
+
+  test('keeps the last dashboard theme until a new one arrives', () async {
+    Object? theme = {
+      'accent': {'light': '#FF5500'},
+      'title': 'Help',
+    };
+    final server = FakeServer({
+      'POST /devices': registered(),
+      'GET /messages': (_) => reply(200, {
+            'messages': [],
+            'unread': 0,
+            if (theme != null) 'theme': theme,
+          }),
+    });
+    final store = HolloStore();
+    addTearDown(store.close);
+    expect(store.remoteTheme, const HolloRemoteTheme());
+
+    await store.start(clientFor(server));
+    expect(store.remoteTheme.accent?.light, 0xFFFF5500);
+    expect(store.remoteTheme.title, 'Help');
+
+    // A server without the field leaves the last theme in place.
+    theme = null;
+    await store.refresh();
+    expect(store.remoteTheme.title, 'Help');
+
+    // An empty one clears it: the dashboard settings were removed.
+    theme = <String, Object?>{};
+    await store.refresh();
+    expect(store.remoteTheme, const HolloRemoteTheme());
   });
 
   test('new messages are added once, in order', () async {

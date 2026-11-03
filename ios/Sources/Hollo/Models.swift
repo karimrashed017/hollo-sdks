@@ -194,18 +194,101 @@ struct PushSettings: Decodable, Hashable, Sendable {
     }
 }
 
+/**
+ * Chat colours and title set in the dashboard, applied over the app's
+ * `HolloTheme` so the look changes without an app release. Every field is
+ * optional, and anything malformed is dropped instead of failing the poll.
+ */
+struct RemoteTheme: Decodable, Hashable, Sendable {
+    /** A colour for light mode, dark mode or both, as 0xRRGGBB. */
+    struct Pair: Hashable, Sendable {
+        var light: UInt32?
+        var dark: UInt32?
+
+        init(light: UInt32? = nil, dark: UInt32? = nil) {
+            self.light = light
+            self.dark = dark
+        }
+    }
+
+    enum Scheme: String, Sendable {
+        case light, dark, system
+    }
+
+    /** Outgoing bubbles, the send button and filled buttons. */
+    var accent: Pair?
+    /** Text and icons on accent surfaces. */
+    var onAccent: Pair?
+    var background: Pair?
+    /** Bubbles from the team and the AI. */
+    var incoming: Pair?
+    var incomingText: Pair?
+    var colorScheme: Scheme?
+    var title: String?
+
+    init(
+        accent: Pair? = nil, onAccent: Pair? = nil, background: Pair? = nil,
+        incoming: Pair? = nil, incomingText: Pair? = nil,
+        colorScheme: Scheme? = nil, title: String? = nil
+    ) {
+        self.accent = accent
+        self.onAccent = onAccent
+        self.background = background
+        self.incoming = incoming
+        self.incomingText = incomingText
+        self.colorScheme = colorScheme
+        self.title = title
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case accent, onAccent, background, incoming, incomingText, colorScheme, title
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func pair(_ key: CodingKeys) -> Pair? {
+            guard let raw = try? c.decodeIfPresent(Payload.self, forKey: key) else { return nil }
+            let pair = Pair(
+                light: raw["light"]?.stringValue.flatMap(Self.hex),
+                dark: raw["dark"]?.stringValue.flatMap(Self.hex)
+            )
+            return pair.light == nil && pair.dark == nil ? nil : pair
+        }
+        accent = pair(.accent)
+        onAccent = pair(.onAccent)
+        background = pair(.background)
+        incoming = pair(.incoming)
+        incomingText = pair(.incomingText)
+        let scheme = try? c.decodeIfPresent(String.self, forKey: .colorScheme)
+        colorScheme = scheme.flatMap(Scheme.init(rawValue:))
+        let title = (try? c.decodeIfPresent(String.self, forKey: .title))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.title = title.flatMap { $0.isEmpty ? nil : String($0.prefix(40)) }
+    }
+
+    /** "#RRGGBB" as 0xRRGGBB; anything else is nil. */
+    static func hex(_ value: String) -> UInt32? {
+        guard value.count == 7, value.hasPrefix("#") else { return nil }
+        let digits = value.dropFirst()
+        guard digits.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
+        return UInt32(digits, radix: 16)
+    }
+}
+
 /** GET /messages. */
 struct MessagesResponse: Decodable, Sendable {
     let messages: [HolloMessage]
     let unread: Int
     let profile: HolloProfile?
     let push: PushSettings?
+    /** Dashboard colours and title. Servers before SDK 0.1.4 leave it out. */
+    let theme: RemoteTheme?
     /** An automation asked to open the chat. */
     let open: Bool
     /** Show "Runs on Hollo" under the composer. Missing means yes. */
     let branding: Bool
 
-    enum CodingKeys: String, CodingKey { case messages, unread, profile, push, open, branding }
+    enum CodingKeys: String, CodingKey { case messages, unread, profile, push, theme, open, branding }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -213,6 +296,7 @@ struct MessagesResponse: Decodable, Sendable {
         unread = try c.decodeIfPresent(Int.self, forKey: .unread) ?? 0
         profile = try? c.decodeIfPresent(HolloProfile.self, forKey: .profile)
         push = try? c.decodeIfPresent(PushSettings.self, forKey: .push)
+        theme = try? c.decodeIfPresent(RemoteTheme.self, forKey: .theme)
         open = (try? c.decodeIfPresent(Bool.self, forKey: .open)) ?? false
         branding = (try? c.decodeIfPresent(Bool.self, forKey: .branding)) ?? true
     }

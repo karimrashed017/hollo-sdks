@@ -121,3 +121,114 @@ class HolloPushSettings {
   /// Show "We'll send you a notification" under the user's latest message.
   final bool notifyLine;
 }
+
+/// A dashboard colour for the light look, the dark look or both, as
+/// 0xFFRRGGBB.
+@immutable
+class HolloRemoteColor {
+  const HolloRemoteColor({this.light, this.dark});
+
+  final int? light;
+  final int? dark;
+
+  /// The half for this look, or null so the app's own colour stays.
+  int? pick({required bool dark}) => dark ? this.dark : light;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HolloRemoteColor && other.light == light && other.dark == dark;
+
+  @override
+  int get hashCode => Object.hash(light, dark);
+}
+
+final RegExp _hexColor = RegExp(r'^#[0-9A-Fa-f]{6}$');
+
+/// "#RRGGBB" as an opaque colour; anything else is null.
+int? readHexColor(Object? value) =>
+    value is String && _hexColor.hasMatch(value)
+        ? 0xFF000000 | int.parse(value.substring(1), radix: 16)
+        : null;
+
+/// Chat colours and title set in the dashboard, applied over the app's
+/// HolloTheme so the look changes without an app release. Every field is
+/// optional, and anything malformed is dropped.
+@immutable
+class HolloRemoteTheme {
+  const HolloRemoteTheme({
+    this.accent,
+    this.onAccent,
+    this.background,
+    this.incoming,
+    this.incomingText,
+    this.colorScheme,
+    this.title,
+  });
+
+  factory HolloRemoteTheme.fromJson(Map<String, dynamic> json) {
+    HolloRemoteColor? color(String key) {
+      final pair = json[key];
+      if (pair is! Map) return null;
+      final light = readHexColor(pair['light']);
+      final dark = readHexColor(pair['dark']);
+      if (light == null && dark == null) return null;
+      return HolloRemoteColor(light: light, dark: dark);
+    }
+
+    final scheme = json['colorScheme'];
+    final title = readString(json['title'])?.trim() ?? '';
+    return HolloRemoteTheme(
+      accent: color('accent'),
+      onAccent: color('onAccent'),
+      background: color('background'),
+      incoming: color('incoming'),
+      incomingText: color('incomingText'),
+      colorScheme: scheme == 'light' || scheme == 'dark' || scheme == 'system'
+          ? scheme as String
+          : null,
+      title: title.isEmpty
+          ? null
+          : title.length > 40
+              ? title.substring(0, 40)
+              : title,
+    );
+  }
+
+  /// The user's bubbles, the send button and filled buttons.
+  final HolloRemoteColor? accent;
+
+  /// Text and icons on accent surfaces.
+  final HolloRemoteColor? onAccent;
+  final HolloRemoteColor? background;
+
+  /// Bubbles from the team and the AI.
+  final HolloRemoteColor? incoming;
+  final HolloRemoteColor? incomingText;
+
+  /// `light` or `dark` forces that look; `system` (or null) leaves it to the
+  /// app.
+  final String? colorScheme;
+  final String? title;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HolloRemoteTheme &&
+      other.accent == accent &&
+      other.onAccent == onAccent &&
+      other.background == background &&
+      other.incoming == incoming &&
+      other.incomingText == incomingText &&
+      other.colorScheme == colorScheme &&
+      other.title == title;
+
+  @override
+  int get hashCode => Object.hash(
+        accent,
+        onAccent,
+        background,
+        incoming,
+        incomingText,
+        colorScheme,
+        title,
+      );
+}

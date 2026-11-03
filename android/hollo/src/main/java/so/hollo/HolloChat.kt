@@ -91,7 +91,8 @@ fun HolloChat(modifier: Modifier = Modifier) {
 internal fun HolloChatScreen(theme: HolloTheme, onClose: (() -> Unit)?, modifier: Modifier = Modifier) {
     val store = Hollo.store
     val state by store.state.collectAsState()
-    val colors = resolveColors(theme, isDark(theme, isSystemInDarkTheme()))
+    val remote = state.remoteTheme
+    val colors = resolveColors(theme, isDark(theme, isSystemInDarkTheme(), remote), remote)
     val font = theme.fontFamily
     val context = LocalContext.current
     val language = remember { Locale.getDefault().toLanguageTag() }
@@ -110,7 +111,13 @@ internal fun HolloChatScreen(theme: HolloTheme, onClose: (() -> Unit)?, modifier
     }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        Header(profile = state.profile, theme = theme, colors = colors, onClose = onClose)
+        Header(
+            profile = state.profile,
+            title = remote.title ?: theme.title,
+            theme = theme,
+            colors = colors,
+            onClose = onClose,
+        )
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (count == 0) {
@@ -205,7 +212,13 @@ private fun tapCard(context: Context, message: HolloMessage) {
 }
 
 @Composable
-private fun Header(profile: HolloProfile, theme: HolloTheme, colors: ResolvedColors, onClose: (() -> Unit)?) {
+private fun Header(
+    profile: HolloProfile,
+    title: String?,
+    theme: HolloTheme,
+    colors: ResolvedColors,
+    onClose: (() -> Unit)?,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 14.dp),
@@ -215,7 +228,7 @@ private fun Header(profile: HolloProfile, theme: HolloTheme, colors: ResolvedCol
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 BasicText(
-                    text = profile.name ?: theme.title ?: "Support",
+                    text = profile.name ?: title ?: "Support",
                     style = TextStyle(
                         color = colors.text,
                         fontSize = 16.sp,
@@ -323,7 +336,7 @@ private fun Bubble(
         bottomStart = if (mine) 18.dp else 6.dp,
     )
     val background = if (mine) colors.userBubble else colors.teamBubble
-    val foreground = if (mine) colors.onUserBubble else colors.text
+    val foreground = if (mine) colors.onUserBubble else colors.onTeamBubble
     val alignment = if (mine) Alignment.CenterEnd else Alignment.CenterStart
     val linked = remember(text) { linkify(text) { url -> Hollo.openUrl(context, url) } }
 

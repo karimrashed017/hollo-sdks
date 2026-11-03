@@ -45,6 +45,7 @@ class HolloStore extends ChangeNotifier {
   String? _error;
   HolloProfile _profile = const HolloProfile();
   HolloPushSettings _push = const HolloPushSettings();
+  HolloRemoteTheme _remoteTheme = const HolloRemoteTheme();
   bool _branding = true;
   bool _pushRegistered = false;
   bool _askPush = false;
@@ -64,6 +65,9 @@ class HolloStore extends ChangeNotifier {
 
   HolloProfile get profile => _profile;
   HolloPushSettings get push => _push;
+
+  /// Colours and title from the dashboard, over the app's HolloTheme.
+  HolloRemoteTheme get remoteTheme => _remoteTheme;
 
   /// Show the "Runs on Hollo" footer. The server decides.
   bool get branding => _branding;
@@ -138,6 +142,7 @@ class HolloStore extends ChangeNotifier {
       if (page.open && !isOpen) onOpenRequested?.call();
       _profile = page.profile ?? _profile;
       _push = page.push ?? _push;
+      _remoteTheme = page.theme ?? _remoteTheme;
       _branding = page.branding;
       _append(page.messages);
       if (isOpen) {

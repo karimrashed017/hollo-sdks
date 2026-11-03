@@ -18,8 +18,9 @@ class HolloChatActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val systemDark =
             (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        // Status bar icons follow the chat's look, which the theme may force.
-        val style = if (isDark(Hollo.theme, systemDark)) {
+        // Status bar icons follow the chat's look, which the theme or the
+        // dashboard may force.
+        val style = if (isDark(Hollo.theme, systemDark, Hollo.store.state.value.remoteTheme)) {
             SystemBarStyle.dark(Color.TRANSPARENT)
         } else {
             SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)

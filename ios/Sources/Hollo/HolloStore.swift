@@ -25,6 +25,8 @@ final class HolloStore {
     /** Who answers, from the dashboard. */
     private(set) var profile = HolloProfile()
     private(set) var push = PushSettings.default
+    /** Colours and title from the dashboard, over `Hollo.theme`. */
+    private(set) var remoteTheme = RemoteTheme()
     /** Show the "Runs on Hollo" footer. The server decides. */
     private(set) var branding = true
     /** This device sent Hollo a push token. */
@@ -156,6 +158,7 @@ final class HolloStore {
     private func apply(_ response: MessagesResponse) {
         if let profile = response.profile, profile != self.profile { self.profile = profile }
         if let push = response.push, push != self.push { self.push = push }
+        if let theme = response.theme, theme != remoteTheme { remoteTheme = theme }
         if response.branding != branding { branding = response.branding }
         merge(response.messages)
         if isOpen {

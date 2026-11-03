@@ -27,6 +27,11 @@ Hollo.theme = HolloTheme(accent: …)    // looks
 Hollo.language = "fr"                  // label language override
 ```
 
+Colours, the look (light or dark) and the title set on the app's page in the
+dashboard arrive with `GET /messages` (`theme`) and go over `Hollo.theme`,
+so they change without an app release. Anything the dashboard leaves unset
+keeps what you set in code.
+
 Pass an identity token signed by your server to mark the user as verified.
 Hollo's AI only runs account actions for verified users.
 

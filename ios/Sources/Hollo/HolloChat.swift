@@ -20,14 +20,16 @@ public struct HolloChat: View {
 
     public var body: some View {
         let theme = Hollo.theme
+        let remote = Hollo.store.remoteTheme
+        let scheme = ChatStyle.scheme(remote: remote, local: theme.colorScheme, system: systemScheme)
         let strings = HolloStrings.forLanguage(Hollo.language)
         ChatScreen(
             store: Hollo.store,
-            style: ChatStyle(theme),
+            style: ChatStyle(theme, remote: remote, scheme: scheme),
             strings: strings,
             onClose: onClose
         )
-        .environment(\.colorScheme, theme.colorScheme ?? systemScheme)
+        .environment(\.colorScheme, scheme)
         .environment(\.layoutDirection, strings.layoutDirection)
     }
 }
@@ -81,7 +83,7 @@ struct ChatHeader: View {
         HStack(spacing: 12) {
             Avatar(photo: store.profile.photo, size: 36, style: style)
             VStack(alignment: .leading, spacing: 1) {
-                Text(store.profile.name ?? style.theme.title ?? strings.support)
+                Text(store.profile.name ?? style.title ?? strings.support)
                     .font(.headline)
                     .foregroundStyle(style.text)
                 Text(store.profile.role ?? strings.replyTime)
@@ -130,7 +132,7 @@ struct Avatar: View {
                 ZStack {
                     style.accent
                     Circle()
-                        .strokeBorder(Ink.readable(on: style.accent, in: environment), lineWidth: size / 12)
+                        .strokeBorder(style.onAccent(style.accent, in: environment), lineWidth: size / 12)
                         .frame(width: size * 0.39, height: size * 0.39)
                 }
             }
@@ -270,7 +272,7 @@ struct Bubble: View {
 
     var body: some View {
         let fill = mine ? style.userBubble : style.teamBubble
-        let foreground = mine ? Ink.readable(on: fill, in: environment) : style.text
+        let foreground = mine ? style.onAccent(fill, in: environment) : style.incomingText
         HStack(spacing: 0) {
             if mine { Spacer(minLength: 48) }
             VStack(alignment: .leading, spacing: 2) {
@@ -379,7 +381,7 @@ struct FilledButton: View {
         Button(action: action) {
             Text(title)
                 .fontWeight(.semibold)
-                .foregroundStyle(Ink.readable(on: style.accent, in: environment))
+                .foregroundStyle(style.onAccent(style.accent, in: environment))
                 .frame(maxWidth: .infinity, minHeight: 40)
                 .background(style.accent, in: Capsule())
         }
@@ -467,7 +469,7 @@ struct Composer: View {
             Button(action: send) {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Ink.readable(on: style.accent, in: environment))
+                    .foregroundStyle(style.onAccent(style.accent, in: environment))
                     .frame(width: 40, height: 40)
                     .background(style.accent, in: Circle())
             }

@@ -24,5 +24,11 @@ Hollo's AI only runs account actions for verified users.
 Hollo.identify({ id: user.id, identityToken: tokenFromYourServer });
 ```
 
+Colours, the look (light or dark) and the title set on the app's page in
+the dashboard go over the `theme` you pass to `Hollo.start`, so they change
+without an app release. Anything the dashboard leaves unset keeps your own
+theme. The chat has one look of its own, so a colour's dark half only shows
+when the dashboard forces dark.
+
 You need a Hollo workspace and an app key: sign up at [hollo.so](https://hollo.so).
 Full guide: [hollo.so/docs/react-native](https://hollo.so/docs/react-native).

@@ -10,13 +10,7 @@ import type {
 } from "./client";
 import { linkAction } from "./links";
 import { HolloStore } from "./store";
-import {
-  HolloChat as Chat,
-  HolloSheet,
-  defaultTheme,
-  useStore,
-  type HolloTheme,
-} from "./ui";
+import { HolloChat as Chat, HolloSheet, useStore, type HolloTheme } from "./ui";
 
 export {
   HolloError,
@@ -34,7 +28,8 @@ export type { HolloTheme };
 // useHolloUnreadCount().
 
 const store = new HolloStore();
-let theme: HolloTheme = defaultTheme;
+// The app's own colours; the chat fills in the rest for its current look.
+let theme: Partial<HolloTheme> = {};
 let offerHandler: ((offer: HolloOffer) => void) | undefined;
 // Read at tap time, so onOffer can be set before or after the provider mounts.
 const onOffer = (offer: HolloOffer) => {
@@ -71,7 +66,7 @@ export const Hollo = {
     storage?: Storage;
     theme?: Partial<HolloTheme>;
   }) {
-    theme = { ...defaultTheme, ...options.theme };
+    theme = { ...options.theme };
     store.start({
       appKey: options.appKey,
       apiUrl: options.apiUrl,
@@ -84,7 +79,7 @@ export const Hollo = {
         os: `${Platform.OS} ${String(Platform.Version ?? "")}`.trim(),
         // Review requests and other team messages use it to pick wording.
         language: Intl.DateTimeFormat().resolvedOptions().locale,
-        sdk: "react-native 0.1.0",
+        sdk: "react-native 0.1.4",
       },
     });
   },

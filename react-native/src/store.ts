@@ -6,6 +6,7 @@ import {
   type HolloPushSettings,
   type HolloUser,
 } from "./client";
+import type { HolloRemoteTheme } from "./theme";
 
 // The SDK's state: the conversation, the unread count and whether the chat is
 // open, plus polling. Plain TypeScript with a tiny subscribe API that the
@@ -22,6 +23,8 @@ export type HolloState = {
   /** Who answers, from the dashboard. */
   profile: HolloProfile;
   push: HolloPushSettings;
+  /** Colours and title from the dashboard, over the app's theme. */
+  remoteTheme: HolloRemoteTheme;
   /** Show the "Runs on Hollo" footer. The server decides. */
   branding: boolean;
   /** This device sent Hollo a push token. */
@@ -46,6 +49,7 @@ export class HolloStore {
     error: null,
     profile: {},
     push: { permissionCard: "off", notifyLine: true },
+    remoteTheme: {},
     branding: true,
     pushRegistered: false,
     askPush: false,
@@ -94,11 +98,12 @@ export class HolloStore {
     if (this.timer) clearTimeout(this.timer);
     try {
       const last = this.state.messages.at(-1)?.created_at;
-      const { messages, unread, profile, push, open, branding } =
+      const { messages, unread, profile, push, open, branding, theme } =
         await this.client.messages(last);
       if (open && !this.state.open) this.setOpen(true);
       if (profile) this.set({ profile });
       if (push) this.set({ push });
+      if (theme) this.set({ remoteTheme: theme });
       if (branding !== this.state.branding) this.set({ branding });
       if (messages.length) {
         const known = new Set(this.state.messages.map((m) => m.id));

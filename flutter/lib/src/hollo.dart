@@ -274,21 +274,33 @@ class HolloChat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = switch (Hollo.themeMode) {
-      ThemeMode.dark => true,
-      ThemeMode.light => false,
-      ThemeMode.system =>
-        MediaQuery.platformBrightnessOf(context) == Brightness.dark,
-    };
-    return HolloChatView(
-      store: Hollo._store,
-      theme: dark ? Hollo.darkTheme : Hollo.theme,
-      os: Hollo._os,
-      onClose: onClose,
-      onOffer: Hollo._offer,
-      onLink: Hollo._link,
-      // Looked up at tap time, so a replacement set later still applies.
-      openUrl: (uri) => Hollo.openUrl(uri),
+    // Rebuilt on every poll, so a look forced in the dashboard applies as
+    // soon as it arrives.
+    return ListenableBuilder(
+      listenable: Hollo._store,
+      builder: (context, _) {
+        final dark = switch (Hollo._store.remoteTheme.colorScheme) {
+          'dark' => true,
+          'light' => false,
+          _ => switch (Hollo.themeMode) {
+              ThemeMode.dark => true,
+              ThemeMode.light => false,
+              ThemeMode.system =>
+                MediaQuery.platformBrightnessOf(context) == Brightness.dark,
+            },
+        };
+        return HolloChatView(
+          store: Hollo._store,
+          theme: dark ? Hollo.darkTheme : Hollo.theme,
+          dark: dark,
+          os: Hollo._os,
+          onClose: onClose,
+          onOffer: Hollo._offer,
+          onLink: Hollo._link,
+          // Looked up at tap time, so a replacement set later still applies.
+          openUrl: (uri) => Hollo.openUrl(uri),
+        );
+      },
     );
   }
 }

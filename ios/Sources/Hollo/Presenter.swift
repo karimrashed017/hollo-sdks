@@ -24,13 +24,20 @@ public final class HolloChatViewController: UIHostingController<AnyView> {
 
     private func applyTheme() {
         // Forcing a look in SwiftUI alone would leave the sheet's own
-        // background following the system.
-        switch Hollo.theme.colorScheme {
+        // background following the system. The dashboard's look wins, as
+        // in HolloChat; it's the last one a poll brought.
+        let remote = Hollo.store.remoteTheme
+        switch remote.colorScheme {
         case .light?: overrideUserInterfaceStyle = .light
         case .dark?: overrideUserInterfaceStyle = .dark
-        default: overrideUserInterfaceStyle = .unspecified
+        case .system?, nil:
+            switch Hollo.theme.colorScheme {
+            case .light?: overrideUserInterfaceStyle = .light
+            case .dark?: overrideUserInterfaceStyle = .dark
+            default: overrideUserInterfaceStyle = .unspecified
+            }
         }
-        title = Hollo.theme.title
+        title = remote.title ?? Hollo.theme.title
     }
 }
 

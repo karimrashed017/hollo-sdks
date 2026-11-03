@@ -86,6 +86,59 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(profile, HolloProfile(welcome: "Ask away"))
     }
 
+    func testDecodesAFullTheme() throws {
+        let response = try decode(MessagesResponse.self, """
+        {"messages": [], "theme": {
+          "accent": {"light": "#FF5500", "dark": "#ffaa77"},
+          "onAccent": {"light": "#FFFFFF", "dark": "#000000"},
+          "background": {"light": "#FAFAFA", "dark": "#101010"},
+          "incoming": {"light": "#EEEEEE", "dark": "#222222"},
+          "incomingText": {"light": "#111111", "dark": "#F0F0F0"},
+          "colorScheme": "dark",
+          "title": "  Driftwood help  "
+        }}
+        """)
+        let theme = try XCTUnwrap(response.theme)
+        XCTAssertEqual(theme.accent, RemoteTheme.Pair(light: 0xFF5500, dark: 0xFFAA77))
+        XCTAssertEqual(theme.onAccent, RemoteTheme.Pair(light: 0xFFFFFF, dark: 0x000000))
+        XCTAssertEqual(theme.background, RemoteTheme.Pair(light: 0xFAFAFA, dark: 0x101010))
+        XCTAssertEqual(theme.incoming, RemoteTheme.Pair(light: 0xEEEEEE, dark: 0x222222))
+        XCTAssertEqual(theme.incomingText, RemoteTheme.Pair(light: 0x111111, dark: 0xF0F0F0))
+        XCTAssertEqual(theme.colorScheme, .dark)
+        XCTAssertEqual(theme.title, "Driftwood help")
+        XCTAssertEqual(ChatStyle.scheme(remote: theme, local: .light, system: .light), .dark)
+        XCTAssertEqual(ChatStyle(HolloTheme(), remote: theme, scheme: .dark).title, "Driftwood help")
+    }
+
+    func testPartialThemeKeepsTheAppsOwnValues() throws {
+        let theme = try decode(RemoteTheme.self, """
+        {"accent": {"dark": "#123456"}, "colorScheme": "system"}
+        """)
+        XCTAssertEqual(theme, RemoteTheme(accent: RemoteTheme.Pair(dark: 0x123456), colorScheme: .system))
+        // Only the dark half is set, so light mode keeps the app's accent.
+        XCTAssertEqual(theme.accent?.hex(dark: true), 0x123456)
+        XCTAssertNil(theme.accent?.hex(dark: false))
+        XCTAssertEqual(ChatStyle.scheme(remote: theme, local: .dark, system: .light), .dark)
+        XCTAssertEqual(ChatStyle.scheme(remote: theme, local: nil, system: .light), .light)
+        XCTAssertEqual(ChatStyle(HolloTheme(title: "Help"), remote: theme).title, "Help")
+    }
+
+    func testMalformedThemeValuesAreDropped() throws {
+        let theme = try decode(RemoteTheme.self, """
+        {"accent": "#FF5500", "onAccent": {"light": "#FFF", "dark": 12},
+         "background": {"light": "#GG0000", "dark": "#00000080"}, "incoming": null,
+         "incomingText": {"light": "#+12345"}, "colorScheme": "sepia", "title": "   "}
+        """)
+        XCTAssertEqual(theme, RemoteTheme())
+
+        // A theme that isn't an object never breaks the poll.
+        let response = try decode(MessagesResponse.self, #"{"messages": [], "theme": "blue", "unread": 2}"#)
+        XCTAssertNil(response.theme)
+        XCTAssertEqual(response.unread, 2)
+        XCTAssertNil(try decode(MessagesResponse.self, #"{"messages": []}"#).theme)
+        XCTAssertEqual(ChatStyle.scheme(remote: RemoteTheme(), local: nil, system: .dark), .dark)
+    }
+
     func testPushSettingsFallBackToDefaults() throws {
         let push = try decode(PushSettings.self, #"{"permissionCard": "sometimes"}"#)
         XCTAssertEqual(push, .default)

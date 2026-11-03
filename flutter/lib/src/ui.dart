@@ -71,6 +71,52 @@ class HolloTheme {
       );
 }
 
+/// [HolloTheme] with the dashboard's colours on top, for the look the chat
+/// is shown in. A colour the dashboard leaves unset keeps the app's.
+class _ChatTheme extends HolloTheme {
+  const _ChatTheme({
+    required super.accent,
+    required super.background,
+    required super.text,
+    required super.muted,
+    required super.bubble,
+    required super.title,
+    super.fontFamily,
+    required this.onAccent,
+    required this.incomingText,
+  });
+
+  factory _ChatTheme.resolve(
+    HolloTheme local,
+    HolloRemoteTheme remote, {
+    required bool dark,
+  }) {
+    Color? pick(HolloRemoteColor? color) {
+      final value = color?.pick(dark: dark);
+      return value == null ? null : Color(value);
+    }
+
+    return _ChatTheme(
+      accent: pick(remote.accent) ?? local.accent,
+      background: pick(remote.background) ?? local.background,
+      text: local.text,
+      muted: local.muted,
+      bubble: pick(remote.incoming) ?? local.bubble,
+      title: remote.title ?? local.title,
+      fontFamily: local.fontFamily,
+      // Text on the accent has always been the background colour.
+      onAccent: pick(remote.onAccent) ?? local.background,
+      incomingText: pick(remote.incomingText) ?? local.text,
+    );
+  }
+
+  /// Text and icons on the accent colour.
+  final Color onAccent;
+
+  /// Text in bubbles from the team and the AI.
+  final Color incomingText;
+}
+
 /// Where the "Runs on Hollo" footer goes; ref counts taps from the chat.
 final Uri _brandingUrl = Uri.parse('https://hollo.so/?ref=chat');
 
@@ -85,10 +131,14 @@ class HolloChatView extends StatefulWidget {
     required this.onLink,
     required this.openUrl,
     this.onClose,
+    this.dark = false,
   });
 
   final HolloStore store;
   final HolloTheme theme;
+
+  /// The chat is shown dark, so dashboard colours use their dark half.
+  final bool dark;
 
   /// `ios`, `android` or `web`: picks the store page for review cards.
   final String os;
@@ -160,11 +210,15 @@ class _HolloChatViewState extends State<HolloChatView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = widget.theme;
     return ListenableBuilder(
       listenable: widget.store,
       builder: (context, _) {
         final store = widget.store;
+        final theme = _ChatTheme.resolve(
+          widget.theme,
+          store.remoteTheme,
+          dark: widget.dark,
+        );
         return Scaffold(
           backgroundColor: theme.background,
           body: SafeArea(
@@ -206,7 +260,7 @@ class _HolloChatViewState extends State<HolloChatView> {
     );
   }
 
-  Widget _messageList(HolloStore store, HolloTheme theme) {
+  Widget _messageList(HolloStore store, _ChatTheme theme) {
     final messages = store.messages;
     // Reversed, so the list starts at the newest message and stays there.
     return ListView.builder(
@@ -237,7 +291,7 @@ class _HolloChatViewState extends State<HolloChatView> {
 
   /// Under the user's latest message: the card asking to turn on
   /// notifications (F-40), or a line saying they'll hear about the reply.
-  Widget _pushFooter(HolloStore store, HolloTheme theme) {
+  Widget _pushFooter(HolloStore store, _ChatTheme theme) {
     if (store.askPush) {
       final question =
           store.push.permissionCard == HolloPermissionCard.repliesOffers
@@ -296,7 +350,7 @@ class _HolloChatViewState extends State<HolloChatView> {
     return const SizedBox.shrink();
   }
 
-  Widget _composer(HolloStore store, HolloTheme theme) {
+  Widget _composer(HolloStore store, _ChatTheme theme) {
     final border = OutlineInputBorder(
       borderRadius: const BorderRadius.all(Radius.circular(20)),
       borderSide: BorderSide(color: theme.bubble),
@@ -353,13 +407,13 @@ class _HolloChatViewState extends State<HolloChatView> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: theme.background,
+                                  color: theme.onAccent,
                                 ),
                               )
                             : Icon(
                                 Icons.arrow_upward,
                                 size: 20,
-                                color: theme.background,
+                                color: theme.onAccent,
                                 semanticLabel: 'Send message',
                               ),
                       ),
@@ -378,7 +432,7 @@ class _HolloChatViewState extends State<HolloChatView> {
 class _Header extends StatelessWidget {
   const _Header({required this.theme, required this.profile, this.onClose});
 
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final HolloProfile profile;
   final VoidCallback? onClose;
 
@@ -435,7 +489,7 @@ class _Header extends StatelessWidget {
 class _Welcome extends StatelessWidget {
   const _Welcome({required this.theme, required this.profile});
 
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final HolloProfile profile;
 
   @override
@@ -478,7 +532,7 @@ class _Avatar extends StatelessWidget {
   const _Avatar({required this.photo, required this.theme, required this.size});
 
   final String? photo;
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final double size;
 
   @override
@@ -501,7 +555,7 @@ class _Avatar extends StatelessWidget {
         height: size * 0.39,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: theme.background, width: size / 12),
+          border: Border.all(color: theme.onAccent, width: size / 12),
         ),
       ),
     );
@@ -516,7 +570,7 @@ class _Bubble extends StatelessWidget {
   });
 
   final HolloMessage message;
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final String? teamName;
 
   @override
@@ -562,7 +616,7 @@ class _Bubble extends StatelessWidget {
                 Text(
                   message.body,
                   style: TextStyle(
-                    color: mine ? theme.background : theme.text,
+                    color: mine ? theme.onAccent : theme.incomingText,
                     fontSize: 15,
                     height: 1.4,
                   ),
@@ -585,7 +639,7 @@ class _CardView extends StatelessWidget {
   });
 
   final HolloCard card;
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final VoidCallback onPressed;
 
   @override
@@ -623,7 +677,7 @@ class _CardView extends StatelessWidget {
 class _Bordered extends StatelessWidget {
   const _Bordered({required this.theme, required this.child});
 
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final Widget child;
 
   @override
@@ -649,7 +703,7 @@ class _PillButton extends StatelessWidget {
   });
 
   final String label;
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final VoidCallback onPressed;
   final bool filled;
 
@@ -663,7 +717,7 @@ class _PillButton extends StatelessWidget {
               onPressed: onPressed,
               style: FilledButton.styleFrom(
                 backgroundColor: theme.accent,
-                foregroundColor: theme.background,
+                foregroundColor: theme.onAccent,
                 shape: const StadiumBorder(),
               ),
               child: Text(
@@ -688,7 +742,7 @@ class _PillButton extends StatelessWidget {
 class _BrandingFooter extends StatelessWidget {
   const _BrandingFooter({required this.theme, required this.onTap});
 
-  final HolloTheme theme;
+  final _ChatTheme theme;
   final VoidCallback onTap;
 
   @override
