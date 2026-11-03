@@ -21,6 +21,8 @@ export type HolloState = {
   /** Who answers, from the dashboard. */
   profile: HolloProfile;
   push: HolloPushSettings;
+  /** Show the "Runs on Hollo" footer. The server decides. */
+  branding: boolean;
   /** This device sent Hollo a push token. */
   pushRegistered: boolean;
   /** Show the in-chat card asking to turn on notifications (F-40). */
@@ -43,6 +45,7 @@ export class HolloStore {
     error: null,
     profile: {},
     push: { permissionCard: "off", notifyLine: true },
+    branding: true,
     pushRegistered: false,
     askPush: false,
   };
@@ -90,11 +93,12 @@ export class HolloStore {
     if (this.timer) clearTimeout(this.timer);
     try {
       const last = this.state.messages.at(-1)?.created_at;
-      const { messages, unread, profile, push, open } =
+      const { messages, unread, profile, push, open, branding } =
         await this.client.messages(last);
       if (open && !this.state.open) this.setOpen(true);
       if (profile) this.set({ profile });
       if (push) this.set({ push });
+      if (branding !== this.state.branding) this.set({ branding });
       if (messages.length) {
         const known = new Set(this.state.messages.map((m) => m.id));
         this.set({

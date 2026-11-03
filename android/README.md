@@ -4,7 +4,8 @@ The native Android SDK: a Kotlin library with a Jetpack Compose chat screen
 (`HolloChat()`), an activity for View-based apps (`Hollo.present(context)`),
 identify/sign-out/erase, link and offer cards, review requests, automations
 (`Hollo.track`) and FCM push hand-off. Feature-equivalent to the React Native
-SDK in `../react-native`.
+SDK in `../react-native`. A small "Runs on Hollo" line sits under the
+composer; the server hides it with `branding: false` in `GET /messages`.
 
 Requirements: `minSdk 24`, Kotlin, Compose. The library adds no HTTP or image
 library: it uses `HttpURLConnection`, coroutines and kotlinx-serialization-json.
@@ -26,7 +27,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.0")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.2")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and

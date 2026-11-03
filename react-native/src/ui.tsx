@@ -182,7 +182,13 @@ export function HolloChat({
         </Text>
       )}
 
-      <View style={styles.composer}>
+      <View
+        style={[
+          styles.composer,
+          // The footer takes over the bottom inset when it shows.
+          state.branding && { paddingBottom: 8 },
+        ]}
+      >
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -216,6 +222,8 @@ export function HolloChat({
           )}
         </Pressable>
       </View>
+
+      {state.branding && <BrandingFooter theme={theme} />}
     </KeyboardAvoidingView>
   );
 }
@@ -305,6 +313,65 @@ function Avatar({
   return (
     <View style={[styles.avatar, round, { backgroundColor: theme.accent }]}>
       <View style={styles.avatarDot} />
+    </View>
+  );
+}
+
+const BRANDING_URL = "https://hollo.so/?ref=chat";
+
+/** "Runs on Hollo" under the composer, unless the server turns it off. */
+function BrandingFooter({ theme }: { theme: HolloTheme }) {
+  return (
+    <Pressable
+      onPress={() => void Linking.openURL(BRANDING_URL).catch(() => {})}
+      accessibilityRole="link"
+      accessibilityLabel="Runs on Hollo"
+      style={styles.branding}
+    >
+      <HolloMark color={theme.muted} hole={theme.background} size={12} />
+      <Text style={[styles.brandingText, { color: theme.muted }]}>
+        Runs on Hollo
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The Hollo mark from brand/hollo-mark.svg, in Views so there's no SVG
+ * dependency: a bubble (square bottom-left corner) with a bubble-shaped hole
+ * painted in the background colour, and a dot in the middle.
+ */
+function HolloMark({
+  color,
+  hole,
+  size,
+}: {
+  color: string;
+  hole: string;
+  size: number;
+}) {
+  const bubble = (d: number, fill: string) => ({
+    width: d,
+    height: d,
+    borderRadius: d / 2,
+    borderBottomLeftRadius: 0,
+    backgroundColor: fill,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  });
+  const dot = (size * 11) / 48;
+  return (
+    <View style={bubble(size, color)}>
+      <View style={bubble((size * 26) / 48, hole)}>
+        <View
+          style={{
+            width: dot,
+            height: dot,
+            borderRadius: dot / 2,
+            backgroundColor: color,
+          }}
+        />
+      </View>
     </View>
   );
 }
@@ -484,6 +551,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
+  branding: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingTop: 2,
+    paddingBottom: Platform.OS === "ios" ? 24 : 8,
+  },
+  brandingText: { fontSize: 11, fontWeight: "500" },
   send: {
     width: 40,
     height: 40,

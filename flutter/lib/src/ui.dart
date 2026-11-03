@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show pi;
 
 import 'package:flutter/material.dart';
 
@@ -69,6 +70,9 @@ class HolloTheme {
         fontFamily: fontFamily ?? this.fontFamily,
       );
 }
+
+/// Where the "Runs on Hollo" footer goes; ref counts taps from the chat.
+final Uri _brandingUrl = Uri.parse('https://hollo.so/?ref=chat');
 
 /// The chat screen itself, wired to a [HolloStore]. Apps use `HolloChat`.
 class HolloChatView extends StatefulWidget {
@@ -188,6 +192,11 @@ class _HolloChatViewState extends State<HolloChatView> {
                       ),
                     ),
                   _composer(store, theme),
+                  if (store.branding)
+                    _BrandingFooter(
+                      theme: theme,
+                      onTap: () => unawaited(widget.openUrl(_brandingUrl)),
+                    ),
                 ],
               ),
             ),
@@ -673,4 +682,80 @@ class _PillButton extends StatelessWidget {
             ),
     );
   }
+}
+
+/// "Runs on Hollo" under the composer, unless the server turns it off.
+class _BrandingFooter extends StatelessWidget {
+  const _BrandingFooter({required this.theme, required this.onTap});
+
+  final HolloTheme theme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Semantics(
+        button: true,
+        label: 'Runs on Hollo',
+        excludeSemantics: true,
+        onTap: onTap,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: const BorderRadius.all(Radius.circular(8)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CustomPaint(
+                  size: const Size.square(12),
+                  painter: _HolloMarkPainter(theme.muted),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  'Runs on Hollo',
+                  style: TextStyle(
+                    color: theme.muted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Hollo mark from brand/hollo-mark.svg (48 × 48): a speech bubble with a
+/// bubble-shaped hole and a dot, drawn even-odd so the hole stays open.
+class _HolloMarkPainter extends CustomPainter {
+  const _HolloMarkPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide / 48;
+    final path = Path()..fillType = PathFillType.evenOdd;
+    // A disc around (24, 24) whose bottom-left quarter is square.
+    for (final r in const [24.0, 13.0]) {
+      final lo = (24 - r) * s;
+      final hi = (24 + r) * s;
+      path
+        ..moveTo(lo, 24 * s)
+        ..arcTo(Rect.fromLTRB(lo, lo, hi, hi), pi, 3 * pi / 2, false)
+        ..lineTo(lo, hi)
+        ..close();
+    }
+    path.addOval(Rect.fromLTRB(18.5 * s, 18.5 * s, 29.5 * s, 29.5 * s));
+    canvas.drawPath(path, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_HolloMarkPainter oldDelegate) =>
+      oldDelegate.color != color;
 }

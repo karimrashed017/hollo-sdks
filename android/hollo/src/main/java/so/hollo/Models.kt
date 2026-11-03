@@ -67,6 +67,8 @@ internal data class MessagesResponse(
     val push: HolloPushSettings?,
     /** An automation asked to open the chat. */
     val open: Boolean,
+    /** Show "Runs on Hollo" under the composer. Missing means yes. */
+    val branding: Boolean = true,
 )
 
 private val PERMISSION_CARDS = setOf("off", "replies", "replies_offers")
@@ -135,4 +137,5 @@ internal fun parseMessagesResponse(o: JsonObject): MessagesResponse =
         profile = parseProfile(o["profile"]),
         push = parsePushSettings(o["push"]),
         open = (o["open"] as? JsonPrimitive)?.booleanOrNull == true,
+        branding = (o["branding"] as? JsonPrimitive)?.booleanOrNull != false,
     )

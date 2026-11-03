@@ -202,8 +202,10 @@ struct MessagesResponse: Decodable, Sendable {
     let push: PushSettings?
     /** An automation asked to open the chat. */
     let open: Bool
+    /** Show "Runs on Hollo" under the composer. Missing means yes. */
+    let branding: Bool
 
-    enum CodingKeys: String, CodingKey { case messages, unread, profile, push, open }
+    enum CodingKeys: String, CodingKey { case messages, unread, profile, push, open, branding }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -212,6 +214,7 @@ struct MessagesResponse: Decodable, Sendable {
         profile = try? c.decodeIfPresent(HolloProfile.self, forKey: .profile)
         push = try? c.decodeIfPresent(PushSettings.self, forKey: .push)
         open = (try? c.decodeIfPresent(Bool.self, forKey: .open)) ?? false
+        branding = (try? c.decodeIfPresent(Bool.self, forKey: .branding)) ?? true
     }
 }
 

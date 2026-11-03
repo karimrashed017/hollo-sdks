@@ -3,6 +3,7 @@ package so.hollo
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,6 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -179,6 +183,10 @@ internal fun HolloChatScreen(theme: HolloTheme, onClose: (() -> Unit)?, modifier
             colors = colors,
             font = font,
         )
+
+        if (state.branding) {
+            BrandingFooter(colors = colors, font = font)
+        }
     }
 }
 
@@ -562,5 +570,55 @@ private fun Composer(
         ) {
             BasicText(text = "↑", style = TextStyle(color = colors.onAccent, fontSize = 17.sp))
         }
+    }
+}
+
+private const val BRANDING_URL = "https://hollo.so/?ref=chat"
+
+/** "Runs on Hollo" under the composer, unless the server turns it off. */
+@Composable
+private fun BrandingFooter(colors: ResolvedColors, font: FontFamily?) {
+    val context = LocalContext.current
+    Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), contentAlignment = Alignment.Center) {
+        // The text doubles as the accessibility label, since clickable merges it.
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button) { Hollo.openUrl(context, BRANDING_URL) }
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HolloMark(colors = colors, size = 12.dp)
+            Spacer(modifier = Modifier.width(5.dp))
+            BasicText(
+                text = "Runs on Hollo",
+                style = TextStyle(color = colors.muted, fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = font),
+            )
+        }
+    }
+}
+
+/**
+ * The Hollo mark from brand/hollo-mark.svg (48 × 48): a speech bubble with a
+ * bubble-shaped hole and a dot, drawn even-odd so the hole stays open.
+ */
+@Composable
+private fun HolloMark(colors: ResolvedColors, size: Dp) {
+    Canvas(modifier = Modifier.size(size)) {
+        val s = this.size.minDimension / 48f
+        val path = Path().apply {
+            fillType = PathFillType.EvenOdd
+            // A disc around (24, 24) whose bottom-left quarter is square.
+            for (r in floatArrayOf(24f, 13f)) {
+                val lo = (24f - r) * s
+                val hi = (24f + r) * s
+                moveTo(lo, 24f * s)
+                arcTo(Rect(lo, lo, hi, hi), 180f, 270f, false)
+                lineTo(lo, hi)
+                close()
+            }
+            addOval(Rect(18.5f * s, 18.5f * s, 29.5f * s, 29.5f * s))
+        }
+        drawPath(path, colors.muted)
     }
 }

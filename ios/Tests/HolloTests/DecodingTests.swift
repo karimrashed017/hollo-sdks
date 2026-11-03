@@ -29,7 +29,8 @@ final class DecodingTests: XCTestCase {
           "unread": 3,
           "profile": {"name": "Karim", "role": "Founder", "photo": "https://hollo.so/p.png"},
           "push": {"permissionCard": "replies_offers", "notifyLine": false},
-          "open": true
+          "open": true,
+          "branding": false
         }
         """)
 
@@ -46,6 +47,7 @@ final class DecodingTests: XCTestCase {
         XCTAssertNil(response.profile?.welcome)
         XCTAssertEqual(response.push, PushSettings(permissionCard: .repliesOffers, notifyLine: false))
         XCTAssertTrue(response.open)
+        XCTAssertFalse(response.branding)
 
         let strings = HolloStrings.english
         XCTAssertEqual(
@@ -74,6 +76,7 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(response.unread, 0)
         XCTAssertNil(response.profile)
         XCTAssertFalse(response.open)
+        XCTAssertTrue(response.branding)
     }
 
     func testProfileIgnoresEmptyFieldsAndNonHttpsPhotos() throws {

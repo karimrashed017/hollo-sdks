@@ -75,6 +75,20 @@ describe("HolloClient", () => {
     expect(header(server.calls[0], "authorization")).toBe("Bearer hdt_saved");
   });
 
+  it("shows the branding footer unless the server turns it off", async () => {
+    const storage = memoryStorage();
+    await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "hdt_saved");
+    let branding: boolean | undefined;
+    const server = fakeServer({
+      "GET /messages": () => [200, { messages: [], unread: 0, branding }],
+    });
+    const api = client(storage, server.fetch);
+
+    expect((await api.messages()).branding).toBe(true);
+    branding = false;
+    expect((await api.messages()).branding).toBe(false);
+  });
+
   it("registers again when the server has forgotten the device", async () => {
     const storage = memoryStorage();
     await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "hdt_old");

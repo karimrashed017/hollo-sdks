@@ -50,6 +50,8 @@ Hollo.language = "fr"                  // label language override
   declares that use (CA92.1) and the data the chat collects.
 - Push tokens go to `POST /api/v1/push` as hex with `provider: "apns"`;
   `sandbox` is true in Debug builds unless the app passes it.
+- A small "Runs on Hollo" line sits under the composer and opens hollo.so.
+  The server turns it off with `branding: false` in `GET /messages`.
 
 ## Tests
 

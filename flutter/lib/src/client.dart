@@ -10,7 +10,7 @@ import 'storage.dart';
 // http.Client. Talks to the SDK API at https://hollo.so/api/v1 with the app
 // key and this install's device token.
 
-const String holloSdkVersion = '0.1.0';
+const String holloSdkVersion = '0.1.2';
 const String holloApiUrl = 'https://hollo.so/api/v1';
 
 /// A failed Hollo call. [code] is the API's error code, like
@@ -36,6 +36,7 @@ class HolloMessagesResponse {
     this.profile,
     this.push,
     this.open = false,
+    this.branding = true,
   });
 
   final List<HolloMessage> messages;
@@ -45,6 +46,9 @@ class HolloMessagesResponse {
 
   /// An automation asked to open the chat.
   final bool open;
+
+  /// Show "Runs on Hollo" under the composer. Missing means yes.
+  final bool branding;
 }
 
 class HolloClient {
@@ -199,6 +203,7 @@ class HolloClient {
           ? HolloPushSettings.fromJson(readMap(data['push']))
           : null,
       open: data['open'] == true,
+      branding: data['branding'] != false,
     );
   }
 

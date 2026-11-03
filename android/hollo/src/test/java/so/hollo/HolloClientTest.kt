@@ -206,7 +206,8 @@ class HolloClientTest {
                           "unread": 1,
                           "profile": {"name":"Karim","role":"Founder","photo":"http://insecure.example/p.png","welcome":""},
                           "push": {"permissionCard":"replies_offers","notifyLine":false},
-                          "open": true
+                          "open": true,
+                          "branding": false
                         }
                     """.trimIndent()
                 },
@@ -226,6 +227,7 @@ class HolloClientTest {
         assertFalse(offer.payload.containsKey("extra"))
         assertEquals(1, response.unread)
         assertTrue(response.open)
+        assertFalse(response.branding)
         assertEquals("Karim", response.profile?.name)
         assertEquals("Founder", response.profile?.role)
         assertNull("Only https photos are loaded", response.profile?.photo)
@@ -244,6 +246,7 @@ class HolloClientTest {
         val response = client(storage, server).messages()
         assertEquals(0, response.unread)
         assertFalse(response.open)
+        assertTrue("Branding shows unless the server says no", response.branding)
         assertNull(response.profile)
         assertEquals("off", response.push?.permissionCard)
         assertEquals(true, response.push?.notifyLine)

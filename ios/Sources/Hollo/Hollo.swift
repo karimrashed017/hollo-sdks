@@ -9,7 +9,7 @@ import UserNotifications
  */
 @MainActor
 public enum Hollo {
-    public static let sdkVersion = "0.1.0"
+    public static let sdkVersion = "0.1.2"
 
     static let store = HolloStore()
     private static var observers: [NSObjectProtocol] = []

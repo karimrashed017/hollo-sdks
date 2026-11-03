@@ -4,6 +4,9 @@ import Foundation
 // unit-tested.
 
 enum HolloLinks {
+    /** Where the "Runs on Hollo" footer goes; ref counts taps from the chat. */
+    static let brandingURL = URL(string: "https://hollo.so/?ref=chat")!
+
     /** The App Store page to leave a review on, from a review card. */
     static func reviewURL(_ payload: Payload) -> URL? {
         let ios = payload.text("appStoreId").trimmingCharacters(in: .whitespaces)

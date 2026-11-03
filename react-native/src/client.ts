@@ -165,16 +165,19 @@ export class HolloClient {
     });
   }
 
-  messages(after?: string) {
+  async messages(after?: string) {
     const query = after ? `?after=${encodeURIComponent(after)}` : "";
-    return this.call<{
+    const data = await this.call<{
       messages: HolloMessage[];
       unread: number;
       profile?: HolloProfile;
       push?: HolloPushSettings;
       /** An automation asked to open the chat. */
       open?: boolean;
+      branding?: boolean;
     }>(`/messages${query}`);
+    // Show "Runs on Hollo" unless the server says not to.
+    return { ...data, branding: data.branding !== false };
   }
 
   send(body: string) {

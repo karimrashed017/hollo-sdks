@@ -58,6 +58,9 @@ struct ChatScreen: View {
                 MessageList(store: store, style: style, strings: strings)
             }
             Composer(store: store, style: style, strings: strings)
+            if store.branding {
+                BrandingFooter(style: style)
+            }
         }
         .animation(.default, value: store.offline)
         .background(style.background.ignoresSafeArea())
@@ -481,5 +484,61 @@ struct Composer: View {
         draft = ""
         // The outbox keeps it, so nothing is lost if it can't go out yet.
         store.send(text)
+    }
+}
+
+// MARK: Branding
+
+/** "Runs on Hollo" under the composer, unless the server turns it off. */
+struct BrandingFooter: View {
+    let style: ChatStyle
+
+    var body: some View {
+        Button {
+            UIApplication.shared.open(HolloLinks.brandingURL)
+        } label: {
+            HStack(spacing: 5) {
+                HolloMark()
+                    .fill(style.muted, style: FillStyle(eoFill: true))
+                    .frame(width: 12, height: 12)
+                // The product name, so it isn't translated.
+                Text(verbatim: "Runs on Hollo")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(style.muted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "Runs on Hollo"))
+    }
+}
+
+/**
+ * The Hollo mark from brand/hollo-mark.svg (48 × 48): a speech bubble with a
+ * bubble-shaped hole and a dot. Fill it with eoFill so the hole stays open.
+ */
+struct HolloMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width, rect.height) / 48
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * scale, y: rect.minY + y * scale)
+        }
+        // A disc of radius r around (24, 24) whose bottom-left quarter is square.
+        func bubble(_ path: inout Path, _ r: CGFloat) {
+            let lo = 24 - r, hi = 24 + r
+            path.move(to: p(lo, 24))
+            path.addArc(tangent1End: p(lo, lo), tangent2End: p(24, lo), radius: r * scale)
+            path.addArc(tangent1End: p(hi, lo), tangent2End: p(hi, 24), radius: r * scale)
+            path.addArc(tangent1End: p(hi, hi), tangent2End: p(24, hi), radius: r * scale)
+            path.addLine(to: p(lo, hi))
+            path.closeSubpath()
+        }
+        var path = Path()
+        bubble(&path, 24)
+        bubble(&path, 13)
+        path.addEllipse(in: CGRect(origin: p(18.5, 18.5), size: CGSize(width: 11 * scale, height: 11 * scale)))
+        return path
     }
 }

@@ -72,6 +72,7 @@ void main() {
       final page = await clientFor(server.client).messages();
 
       expect(page.unread, 2);
+      expect(page.branding, isTrue, reason: 'missing means show it');
       expect(server.to('POST', '/devices'), isEmpty);
       expect(
         server.calls.single.headers['authorization'],
@@ -200,6 +201,7 @@ void main() {
               },
               'push': {'permissionCard': 'replies_offers', 'notifyLine': false},
               'open': true,
+              'branding': false,
             }),
       });
 
@@ -216,6 +218,7 @@ void main() {
       expect(page.push?.permissionCard, HolloPermissionCard.repliesOffers);
       expect(page.push?.notifyLine, isFalse);
       expect(page.open, isTrue);
+      expect(page.branding, isFalse);
     });
 
     test('polls with the last message time, encoded', () async {

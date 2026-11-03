@@ -45,6 +45,7 @@ class HolloStore extends ChangeNotifier {
   String? _error;
   HolloProfile _profile = const HolloProfile();
   HolloPushSettings _push = const HolloPushSettings();
+  bool _branding = true;
   bool _pushRegistered = false;
   bool _askPush = false;
 
@@ -63,6 +64,9 @@ class HolloStore extends ChangeNotifier {
 
   HolloProfile get profile => _profile;
   HolloPushSettings get push => _push;
+
+  /// Show the "Runs on Hollo" footer. The server decides.
+  bool get branding => _branding;
 
   /// This device gave Hollo a push token.
   bool get pushRegistered => _pushRegistered;
@@ -134,6 +138,7 @@ class HolloStore extends ChangeNotifier {
       if (page.open && !isOpen) onOpenRequested?.call();
       _profile = page.profile ?? _profile;
       _push = page.push ?? _push;
+      _branding = page.branding;
       _append(page.messages);
       if (isOpen) {
         if (page.unread > 0) unawaited(_quietly(client.markRead()));

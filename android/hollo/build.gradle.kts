@@ -71,7 +71,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "so.hollo"
             artifactId = "hollo"
-            version = providers.gradleProperty("holloVersion").getOrElse("0.1.0")
+            version = providers.gradleProperty("holloVersion").getOrElse("0.1.2")
             afterEvaluate { from(components["release"]) }
         }
     }

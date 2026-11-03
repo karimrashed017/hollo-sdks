@@ -25,6 +25,8 @@ final class HolloStore {
     /** Who answers, from the dashboard. */
     private(set) var profile = HolloProfile()
     private(set) var push = PushSettings.default
+    /** Show the "Runs on Hollo" footer. The server decides. */
+    private(set) var branding = true
     /** This device sent Hollo a push token. */
     private(set) var pushRegistered = false
     /** The user allowed notifications, so the "we'll notify you" line is true. */
@@ -154,6 +156,7 @@ final class HolloStore {
     private func apply(_ response: MessagesResponse) {
         if let profile = response.profile, profile != self.profile { self.profile = profile }
         if let push = response.push, push != self.push { self.push = push }
+        if response.branding != branding { branding = response.branding }
         merge(response.messages)
         if isOpen {
             if response.unread > 0, let client { Task { try? await client.markRead() } }

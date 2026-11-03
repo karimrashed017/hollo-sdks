@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * with [present] or the [HolloChat] composable.
  */
 object Hollo {
-    internal const val SDK_VERSION = "0.1.0"
+    internal const val SDK_VERSION = "0.1.2"
     private const val TAG = "Hollo"
     private const val PREFS = "so.hollo"
     private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"

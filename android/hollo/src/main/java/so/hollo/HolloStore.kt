@@ -36,6 +36,8 @@ internal data class HolloState(
     val offline: Boolean = false,
     val profile: HolloProfile = HolloProfile(),
     val push: HolloPushSettings = HolloPushSettings(),
+    /** Show the "Runs on Hollo" footer. The server decides. */
+    val branding: Boolean = true,
     /** This device sent Hollo a push token. */
     val pushRegistered: Boolean = false,
     /** Show the in-chat card asking to turn on notifications (F-40). */
@@ -133,6 +135,7 @@ internal class HolloStore(private val scope: CoroutineScope) {
                     messages = s.messages + response.messages.filter { it.id !in known },
                     profile = response.profile ?: s.profile,
                     push = response.push ?: s.push,
+                    branding = response.branding,
                     unread = if (s.open) 0 else response.unread,
                     error = null,
                     offline = false,
