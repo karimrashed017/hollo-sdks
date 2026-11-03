@@ -40,6 +40,14 @@ export type HolloPushSettings = {
   notifyLine: boolean;
 };
 
+/** The app's own user. `identityToken` comes from the developer's server. */
+export type HolloUser = {
+  id: string;
+  name?: string;
+  email?: string;
+  identityToken?: string;
+};
+
 export type Storage = {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -158,11 +166,17 @@ export class HolloClient {
     await this.options.storage.removeItem(this.key());
   }
 
-  identify(user: { id: string; name?: string; email?: string }) {
-    return this.call<{ userId: string }>("/identify", {
-      method: "POST",
-      body: user,
-    });
+  async identify(user: HolloUser) {
+    const { identityToken, ...details } = user;
+    const data = await this.call<{ userId: string; verified?: boolean }>(
+      "/identify",
+      {
+        method: "POST",
+        body: identityToken ? { ...details, token: identityToken } : details,
+      },
+    );
+    // Older servers don't send `verified`; that means not verified.
+    return { userId: data.userId, verified: data.verified === true };
   }
 
   async messages(after?: string) {

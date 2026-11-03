@@ -243,11 +243,25 @@ void main() {
         'POST /identify': (_) => reply(200, {'userId': 'u42'}),
       });
 
-      final userId = await clientFor(server.client).identify(id: 'user_42');
+      final identified = await clientFor(server.client).identify(id: 'user_42');
 
-      expect(userId, 'u42');
+      expect(identified.userId, 'u42');
+      expect(identified.verified, isFalse);
       expect(bodyOf(server.calls.single), {'id': 'user_42'});
       expect(server.calls.single.headers['content-type'], contains('application/json'));
+    });
+
+    test('sends the identity token only when given', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'POST /identify': (_) => reply(200, {'userId': 'u42', 'verified': true}),
+      });
+
+      final identified = await clientFor(server.client)
+          .identify(id: 'user_42', identityToken: 'a1b2c3');
+
+      expect(identified.verified, isTrue);
+      expect(bodyOf(server.calls.single), {'id': 'user_42', 'token': 'a1b2c3'});
     });
 
     test('sends the FCM push token, and null to turn push off', () async {

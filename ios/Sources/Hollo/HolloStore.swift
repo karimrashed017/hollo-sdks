@@ -283,11 +283,13 @@ final class HolloStore {
 
     // MARK: Users
 
-    func identify(id: String, name: String?, email: String?) {
+    func identify(id: String, name: String?, email: String?, identityToken: String?) {
         enqueue { [weak self] in
             guard let self, let client = self.client else { return }
             do {
-                if try await client.identify(id: id, name: name, email: email) {
+                if try await client.identify(
+                    id: id, name: name, email: email, identityToken: identityToken
+                ) {
                     // The device may now belong to a user with history.
                     await self.reload(clearOutbox: false)
                 }

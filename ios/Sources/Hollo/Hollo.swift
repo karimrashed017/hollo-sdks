@@ -9,7 +9,7 @@ import UserNotifications
  */
 @MainActor
 public enum Hollo {
-    public static let sdkVersion = "0.1.2"
+    public static let sdkVersion = "0.1.3"
 
     static let store = HolloStore()
     private static var observers: [NSObjectProtocol] = []
@@ -76,10 +76,15 @@ public enum Hollo {
     /**
      * Links this device to your app's user, so history follows them to
      * every device. Calling it again with the same details does nothing.
+     *
+     * Pass `identityToken` (an HMAC-SHA256 of `id`, made by your server with
+     * the app's identity secret) to mark the user as verified.
      */
-    public static func identify(id: String, name: String? = nil, email: String? = nil) {
+    public static func identify(
+        id: String, name: String? = nil, email: String? = nil, identityToken: String? = nil
+    ) {
         guard store.started else { return logNotStarted("identify") }
-        store.identify(id: id, name: name, email: email)
+        store.identify(id: id, name: name, email: email, identityToken: identityToken)
     }
 
     /**

@@ -241,8 +241,14 @@ class HolloStore extends ChangeNotifier {
     required String id,
     String? name,
     String? email,
+    String? identityToken,
   }) async {
-    await _api.identify(id: id, name: name, email: email);
+    await _api.identify(
+      id: id,
+      name: name,
+      email: email,
+      identityToken: identityToken,
+    );
     await _reload();
   }
 

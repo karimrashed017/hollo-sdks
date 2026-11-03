@@ -143,6 +143,27 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(server.calls.count, 2)
         XCTAssertEqual(server.calls.first?.body?["id"] as? String, "42")
         XCTAssertNil(server.calls.first?.body?["email"])
+        XCTAssertNil(server.calls.first?.body?["token"])
+    }
+
+    func testIdentifySendsTheIdentityTokenWhenGiven() async throws {
+        let storage = MemoryStorage()
+        storage.set("hdt_saved", forKey: "hollo.deviceToken.\(testAppKey)")
+        let server = FakeServer([
+            "POST /identify": { _ in (200, ["userId": "u1", "verified": true]) },
+        ])
+        let client = makeClient(server, storage: storage)
+
+        _ = try await client.identify(id: "42", name: nil, email: nil)
+        let signed = try await client.identify(
+            id: "42", name: nil, email: nil, identityToken: "a1b2c3"
+        )
+
+        // Adding a token to details already sent still reaches the server.
+        XCTAssertTrue(signed)
+        XCTAssertEqual(server.calls.count, 2)
+        XCTAssertNil(server.calls.first?.body?["token"])
+        XCTAssertEqual(server.calls.last?.body?["token"] as? String, "a1b2c3")
     }
 
     func testSendsThePushTokenForAPNs() async throws {

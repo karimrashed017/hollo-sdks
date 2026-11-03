@@ -1,7 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createElement, Fragment, type ReactNode } from "react";
 import { Linking, Platform } from "react-native";
-import type { HolloLink, HolloMessage, HolloOffer, Storage } from "./client";
+import type {
+  HolloLink,
+  HolloMessage,
+  HolloOffer,
+  HolloUser,
+  Storage,
+} from "./client";
 import { linkAction } from "./links";
 import { HolloStore } from "./store";
 import {
@@ -19,6 +25,7 @@ export {
   type HolloOffer,
   type HolloProfile,
   type HolloPushSettings,
+  type HolloUser,
 } from "./client";
 export type { HolloTheme };
 
@@ -88,8 +95,12 @@ export const Hollo = {
   dismiss() {
     store.setOpen(false);
   },
-  /** Links this device to your app's user, so history follows them. */
-  identify(user: { id: string; name?: string; email?: string }) {
+  /**
+   * Links this device to your app's user, so history follows them. Pass
+   * `identityToken` (an HMAC-SHA256 of `id`, made by your server with the
+   * app's identity secret) to mark the user as verified.
+   */
+  identify(user: HolloUser) {
     return store.identify(user);
   },
   signOut() {

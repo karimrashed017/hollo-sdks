@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.2")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.3")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and
@@ -50,6 +50,9 @@ Hollo.present(activity)
 composable("support") { HolloChat() }
 
 Hollo.identify(id = user.id, name = user.name, email = user.email)
+// Pass an identity token signed by your server to mark the user as verified.
+// Hollo's AI only runs account actions for verified users.
+Hollo.identify(id = user.id, email = user.email, identityToken = tokenFromYourServer)
 Hollo.signOut()
 lifecycleScope.launch { Hollo.eraseUserData() } // suspend, throws HolloException
 

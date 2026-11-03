@@ -12,7 +12,7 @@ dependencies:
     git:
       url: https://github.com/karimrashed017/hollo-sdks.git
       path: flutter
-      ref: 0.1.2
+      ref: 0.1.3
 ```
 
 It uses `http`, `shared_preferences` (to keep the device token) and `url_launcher` (to open store pages and links). After adding it, stop the app and run `flutter run` again; a hot reload doesn't pick up new plugins.
@@ -48,6 +48,12 @@ If your app already has a navigator key, set `Hollo.navigatorKey = yourKey`, or 
 | `Hollo.handle(message.data)`                        | Opens the chat for a tapped Hollo notification.                  |
 | `Hollo.onPushPermission = () async => token`        | Lets the chat ask for notifications after the first message.     |
 | `Hollo.theme`, `Hollo.darkTheme`, `Hollo.themeMode` | Colours, title and font. Black and white by default.             |
+
+Pass an identity token signed by your server to mark the user as verified. Hollo's AI only runs account actions for verified users.
+
+```dart
+await Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServer);
+```
 
 ## Develop
 

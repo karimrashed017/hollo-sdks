@@ -237,12 +237,17 @@ actor HolloClient {
      * Links this device to the app's own user. Returns false without a
      * request when the same details were already sent from this device.
      */
-    func identify(id: String, name: String?, email: String?) async throws -> Bool {
-        let fingerprint = [id, name ?? "", email ?? ""].joined(separator: "\u{1F}")
+    func identify(
+        id: String, name: String?, email: String?, identityToken: String? = nil
+    ) async throws -> Bool {
+        // The token is in the fingerprint so adding one later still sends it.
+        let fingerprint = [id, name ?? "", email ?? "", identityToken ?? ""]
+            .joined(separator: "\u{1F}")
         if storage.string(forKey: identityKey) == fingerprint { return false }
         var body: [String: JSONValue] = ["id": .string(id)]
         if let name, !name.isEmpty { body["name"] = .string(name) }
         if let email, !email.isEmpty { body["email"] = .string(email) }
+        if let identityToken, !identityToken.isEmpty { body["token"] = .string(identityToken) }
         let _: Ignored = try await call("/identify", method: "POST", body: .object(body))
         storage.set(fingerprint, forKey: identityKey)
         return true

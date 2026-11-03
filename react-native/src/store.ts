@@ -4,6 +4,7 @@ import {
   type HolloMessage,
   type HolloProfile,
   type HolloPushSettings,
+  type HolloUser,
 } from "./client";
 
 // The SDK's state: the conversation, the unread count and whether the chat is
@@ -176,7 +177,7 @@ export class HolloStore {
     if (token) await this.registerPush(token).catch(() => {});
   }
 
-  identify(user: { id: string; name?: string; email?: string }) {
+  identify(user: HolloUser) {
     return this.api.identify(user).then(() => this.reload());
   }
 

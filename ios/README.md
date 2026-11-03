@@ -13,7 +13,7 @@ Hollo.present()                        // the chat as a sheet
 HolloChat()                            // or as a SwiftUI view
 HolloChatViewController()              // or as a UIKit view controller
 Hollo.unreadCount                      // observable, for badges
-Hollo.identify(id:name:email:)         // after sign-in
+Hollo.identify(id:name:email:identityToken:) // after sign-in
 Hollo.signOut()
 try await Hollo.eraseUserData()        // account deletion
 Hollo.registerPush(deviceToken:)       // from the app delegate
@@ -25,6 +25,13 @@ Hollo.onOffer = { offer in … }         // offer cards
 Hollo.onLink = { link in … }           // link cards that open your screens
 Hollo.theme = HolloTheme(accent: …)    // looks
 Hollo.language = "fr"                  // label language override
+```
+
+Pass an identity token signed by your server to mark the user as verified.
+Hollo's AI only runs account actions for verified users.
+
+```swift
+Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServer)
 ```
 
 ## How it's built

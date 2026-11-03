@@ -103,6 +103,29 @@ describe("HolloClient", () => {
     expect(storage.data.get(`hollo.deviceToken.${APP_KEY}`)).toBe("hdt_new");
   });
 
+  it("sends the identity token as `token` only when given", async () => {
+    const storage = memoryStorage();
+    await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "hdt_saved");
+    const server = fakeServer({
+      "POST /identify": (call) => {
+        const body = JSON.parse(call.init.body as string);
+        return [200, { userId: "u1", ...(body.token && { verified: true }) }];
+      },
+    });
+    const api = client(storage, server.fetch);
+
+    const plain = await api.identify({ id: "42", name: "Ada" });
+    const signed = await api.identify({ id: "42", identityToken: "a1b2c3" });
+
+    const bodies = server.calls.map((c) => JSON.parse(c.init.body as string));
+    expect(bodies).toEqual([
+      { id: "42", name: "Ada" },
+      { id: "42", token: "a1b2c3" },
+    ]);
+    expect(plain).toEqual({ userId: "u1", verified: false });
+    expect(signed).toEqual({ userId: "u1", verified: true });
+  });
+
   it("surfaces a missing plan as a clear error", async () => {
     const server = fakeServer({
       "POST /devices": () => [

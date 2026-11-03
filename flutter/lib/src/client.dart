@@ -10,7 +10,7 @@ import 'storage.dart';
 // http.Client. Talks to the SDK API at https://hollo.so/api/v1 with the app
 // key and this install's device token.
 
-const String holloSdkVersion = '0.1.2';
+const String holloSdkVersion = '0.1.3';
 const String holloApiUrl = 'https://hollo.so/api/v1';
 
 /// A failed Hollo call. [code] is the API's error code, like
@@ -162,11 +162,13 @@ class HolloClient {
     await storage.removeItem(_tokenKey);
   }
 
-  /// Links this device to the app's user. Returns Hollo's user ID.
-  Future<String?> identify({
+  /// Links this device to the app's user. Returns Hollo's user ID and
+  /// whether the identity token checked out (false when it's missing).
+  Future<({String? userId, bool verified})> identify({
     required String id,
     String? name,
     String? email,
+    String? identityToken,
   }) async {
     final data = await _call(
       'POST',
@@ -175,9 +177,13 @@ class HolloClient {
         'id': id,
         if (name != null) 'name': name,
         if (email != null) 'email': email,
+        if (identityToken != null) 'token': identityToken,
       },
     );
-    return readString(data['userId']);
+    return (
+      userId: readString(data['userId']),
+      verified: data['verified'] == true,
+    );
   }
 
   /// The conversation, or only messages newer than [after] when polling.

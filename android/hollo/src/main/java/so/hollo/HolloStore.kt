@@ -273,9 +273,9 @@ internal class HolloStore(private val scope: CoroutineScope) {
         }
     }
 
-    suspend fun identify(id: String, name: String?, email: String?) {
+    suspend fun identify(id: String, name: String?, email: String?, identityToken: String?) {
         accountLock.withLock {
-            api().identify(id, name, email)
+            api().identify(id, name, email, identityToken)
             reload(clearPending = false)
         }
     }

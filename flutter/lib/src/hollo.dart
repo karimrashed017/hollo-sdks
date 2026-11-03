@@ -136,12 +136,21 @@ abstract final class Hollo {
 
   /// Links this device to your app's user, so history follows them across
   /// devices. Call it after sign-in.
+  ///
+  /// Pass [identityToken] (an HMAC-SHA256 of [id], made by your server with
+  /// the app's identity secret) to mark the user as verified.
   static Future<void> identify({
     required String id,
     String? name,
     String? email,
+    String? identityToken,
   }) =>
-      _store.identify(id: id, name: name, email: email);
+      _store.identify(
+        id: id,
+        name: name,
+        email: email,
+        identityToken: identityToken,
+      );
 
   /// Starts a fresh anonymous chat. The user's history stays on the server
   /// and comes back when they're identified again.

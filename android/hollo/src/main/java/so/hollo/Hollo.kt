@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * with [present] or the [HolloChat] composable.
  */
 object Hollo {
-    internal const val SDK_VERSION = "0.1.2"
+    internal const val SDK_VERSION = "0.1.3"
     private const val TAG = "Hollo"
     private const val PREFS = "so.hollo"
     private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
@@ -117,11 +117,15 @@ object Hollo {
         scope.launch { chatActivity?.get()?.finish() }
     }
 
-    /** Links this device to your app's user, so history follows them. */
+    /**
+     * Links this device to your app's user, so history follows them. Pass
+     * [identityToken] (an HMAC-SHA256 of [id], made by your server with the
+     * app's identity secret) to mark the user as verified.
+     */
     @JvmStatic
     @JvmOverloads
-    fun identify(id: String, name: String? = null, email: String? = null) {
-        background("identify") { store.identify(id, name, email) }
+    fun identify(id: String, name: String? = null, email: String? = null, identityToken: String? = null) {
+        background("identify") { store.identify(id, name, email, identityToken) }
     }
 
     /** Starts a fresh anonymous chat. The history stays in your inbox. */

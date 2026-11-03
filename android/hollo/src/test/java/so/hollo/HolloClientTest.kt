@@ -261,7 +261,10 @@ class HolloClientTest {
                 "POST /messages" to { _: HolloHttpRequest ->
                     201 to """{"message":{"id":"m9","sender":"end_user","kind":"text","body":"Hello","created_at":"t"}}"""
                 },
-                "POST /identify" to { _: HolloHttpRequest -> 200 to """{"userId":"u1"}""" },
+                "POST /identify" to { request: HolloHttpRequest ->
+                    val verified = request.body?.contains("\"token\"") == true
+                    200 to """{"userId":"u1","verified":$verified}"""
+                },
                 "POST /links/tap" to { _: HolloHttpRequest -> 200 to """{"ok":true}""" },
                 "POST /events" to { _: HolloHttpRequest -> 200 to """{"open":true}""" },
                 "POST /push" to { _: HolloHttpRequest -> 200 to """{"ok":true}""" },
@@ -274,11 +277,16 @@ class HolloClientTest {
         assertEquals(JsonPrimitive("Hello"), bodyOf(server.requests.last())["body"])
         assertEquals("application/json", server.requests.last().headers["content-type"])
 
-        assertEquals("u1", api.identify("user_42", name = "Ada", email = null))
+        assertEquals(HolloClient.Identified("u1", verified = false), api.identify("user_42", name = "Ada", email = null))
         val identify = bodyOf(server.requests.last())
         assertEquals(JsonPrimitive("user_42"), identify["id"])
         assertEquals(JsonPrimitive("Ada"), identify["name"])
         assertFalse("Unset fields aren't sent", identify.containsKey("email"))
+        assertFalse("No token unless given", identify.containsKey("token"))
+
+        val signed = api.identify("user_42", name = null, email = null, identityToken = "a1b2c3")
+        assertTrue(signed.verified)
+        assertEquals(JsonPrimitive("a1b2c3"), bodyOf(server.requests.last())["token"])
 
         api.linkTapped("m2", opened = false)
         val tap = bodyOf(server.requests.last())

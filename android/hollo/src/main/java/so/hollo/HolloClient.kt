@@ -117,13 +117,19 @@ internal class HolloClient(
         }
     }
 
-    suspend fun identify(id: String, name: String?, email: String?): String? {
+    /** A missing `verified` (an older server) counts as not verified. */
+    data class Identified(val userId: String?, val verified: Boolean)
+
+    suspend fun identify(id: String, name: String?, email: String?, identityToken: String? = null): Identified {
         val body = buildJsonObject {
             put("id", id)
             if (name != null) put("name", name)
             if (email != null) put("email", email)
+            if (identityToken != null) put("token", identityToken)
         }
-        return call("/identify", method = "POST", body = body).string("userId")
+        val data = call("/identify", method = "POST", body = body)
+        val verified = data["verified"] as? JsonPrimitive
+        return Identified(data.string("userId"), verified?.booleanOrNull == true)
     }
 
     suspend fun messages(after: String? = null): MessagesResponse {
