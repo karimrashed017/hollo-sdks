@@ -44,6 +44,11 @@ internal data class HolloMessage(
     /** Card details for review_request, offer and link messages. */
     val payload: Map<String, String>,
     val createdAt: String,
+    /**
+     * An image message's photos as signed URLs, in order. They expire after
+     * a day; the next launch fetches fresh ones. Older servers send none.
+     */
+    val photos: List<String> = emptyList(),
 )
 
 /** Who answers, set on the app's page in the dashboard. */
@@ -133,8 +138,16 @@ internal fun parseMessage(element: JsonElement): HolloMessage? {
         body = o.string("body") ?: "",
         payload = payload,
         createdAt = o.string("created_at") ?: "",
+        photos = parsePhotos(o["photos"]),
     )
 }
+
+/** Web URLs only, so nothing else is ever loaded. Plain http is kept for a local Supabase in development. */
+private fun parsePhotos(element: JsonElement?): List<String> =
+    (element as? JsonArray)
+        ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+        ?.filter { it.startsWith("https://") || it.startsWith("http://") }
+        ?: emptyList()
 
 internal fun parseProfile(element: JsonElement?): HolloProfile? {
     val o = element as? JsonObject ?: return null

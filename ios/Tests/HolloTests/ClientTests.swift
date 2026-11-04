@@ -190,6 +190,97 @@ final class ClientTests: XCTestCase {
         XCTAssertNil(storage.string(forKey: "hollo.deviceToken.\(testAppKey)"))
     }
 
+    func testUploadsAPhotoAsRawJPEGBytes() async throws {
+        let storage = MemoryStorage()
+        storage.set("hdt_saved", forKey: "hollo.deviceToken.\(testAppKey)")
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02])
+        let server = FakeServer([
+            "POST /photos": { _ in (201, ["photo": ["path": "ws/conv/p1.jpg"]]) },
+        ])
+
+        let path = try await makeClient(server, storage: storage).uploadPhoto(jpeg)
+
+        XCTAssertEqual(path, "ws/conv/p1.jpg")
+        let call = try XCTUnwrap(server.calls.first)
+        XCTAssertEqual(call.method, "POST")
+        XCTAssertEqual(call.header("content-type"), "image/jpeg")
+        XCTAssertEqual(call.header("x-hollo-app-key"), testAppKey)
+        XCTAssertEqual(call.header("authorization"), "Bearer hdt_saved")
+        XCTAssertEqual(call.data, jpeg)
+        XCTAssertNil(call.body)
+    }
+
+    func testPhotoUploadRegistersAgainWhenTheServerHasForgottenTheDevice() async throws {
+        let storage = MemoryStorage()
+        storage.set("hdt_old", forKey: "hollo.deviceToken.\(testAppKey)")
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xDB])
+        let server = FakeServer([
+            "POST /photos": { call in
+                call.header("authorization") == "Bearer hdt_old"
+                    ? (401, ["error": ["code": "invalid_device", "message": "Unknown"]])
+                    : (201, ["photo": ["path": "ws/conv/p2.jpg"]])
+            },
+            "POST /devices": { _ in (201, ["deviceToken": "hdt_new"]) },
+        ])
+
+        let path = try await makeClient(server, storage: storage).uploadPhoto(jpeg)
+
+        XCTAssertEqual(path, "ws/conv/p2.jpg")
+        XCTAssertEqual(server.calls.map(\.path), ["/photos", "/devices", "/photos"])
+        // The retry sends the same bytes again.
+        XCTAssertEqual(server.calls.last?.data, jpeg)
+    }
+
+    func testSurfacesATooLargePhotoAsARefusal() async throws {
+        let storage = MemoryStorage()
+        storage.set("hdt_saved", forKey: "hollo.deviceToken.\(testAppKey)")
+        let server = FakeServer([
+            "POST /photos": { _ in (413, ["error": ["code": "photo_too_large", "message": "Up to 4 MB"]]) },
+        ])
+        do {
+            _ = try await makeClient(server, storage: storage).uploadPhoto(Data([0xFF, 0xD8]))
+            XCTFail("Expected an error")
+        } catch let error as HolloError {
+            XCTAssertEqual(error.code, "photo_too_large")
+            XCTAssertEqual(error.status, 413)
+            XCTAssertFalse(error.isConnectivity)
+        }
+    }
+
+    func testSendsPhotoPathsWithAnOptionalCaption() async throws {
+        let storage = MemoryStorage()
+        storage.set("hdt_saved", forKey: "hollo.deviceToken.\(testAppKey)")
+        let server = FakeServer([
+            "POST /messages": { call in
+                let photos = (call.body?["photos"] as? [String]) ?? []
+                let body = call.body?["body"] as? String ?? ""
+                return photos.isEmpty
+                    ? (201, ["message": messageJSON("m1", sender: "end_user", at: "t1", body: body)])
+                    : (201, ["message": photoMessageJSON("m2", at: "t2", body: body, photos: ["a", "b"])])
+            },
+        ])
+        let client = makeClient(server, storage: storage)
+
+        let photoOnly = try await client.send("", photos: ["ws/conv/a.jpg", "ws/conv/b.jpg"])
+        _ = try await client.send("Look at this", photos: ["ws/conv/a.jpg"])
+        _ = try await client.send("Hi")
+
+        let calls = server.calls
+        XCTAssertNil(calls[0].body?["body"])
+        XCTAssertEqual(calls[0].body?["photos"] as? [String], ["ws/conv/a.jpg", "ws/conv/b.jpg"])
+        XCTAssertEqual(calls[1].body?["body"] as? String, "Look at this")
+        XCTAssertEqual(calls[1].body?["photos"] as? [String], ["ws/conv/a.jpg"])
+        XCTAssertEqual(calls[2].body?["body"] as? String, "Hi")
+        XCTAssertNil(calls[2].body?["photos"])
+
+        XCTAssertEqual(photoOnly.kind, "image")
+        XCTAssertEqual(photoOnly.body, "")
+        XCTAssertEqual(photoOnly.photos, [
+            URL(string: "https://storage.hollo.so/signed/a.jpg?token=t")!,
+            URL(string: "https://storage.hollo.so/signed/b.jpg?token=t")!,
+        ])
+    }
+
     func testEventReturnsWhetherToOpenTheChat() async throws {
         let storage = MemoryStorage()
         storage.set("hdt_saved", forKey: "hollo.deviceToken.\(testAppKey)")

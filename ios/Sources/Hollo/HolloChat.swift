@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -202,14 +203,19 @@ struct MessageList: View {
     let store: HolloStore
     let style: ChatStyle
     let strings: HolloStrings
+    /** Photos open full screen from here, not the row, which a lazy stack can drop. */
+    @State private var viewing: PhotoViewing?
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(store.messages) { message in
-                        MessageRow(message: message, profileName: store.profile.name, style: style, strings: strings)
-                            .id(message.id)
+                        MessageRow(
+                            message: message, profileName: store.profile.name, style: style, strings: strings,
+                            openPhoto: { viewing = PhotoViewing(photos: message.photos, index: $0) }
+                        )
+                        .id(message.id)
                     }
                     ForEach(store.outbox) { item in
                         PendingRow(item: item, store: store, style: style, strings: strings)
@@ -229,6 +235,9 @@ struct MessageList: View {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
+        .fullScreenCover(item: $viewing) { viewing in
+            PhotoViewer(photos: viewing.photos, start: viewing.index, strings: strings)
+        }
     }
 }
 
@@ -237,6 +246,12 @@ struct MessageRow: View {
     let profileName: String?
     let style: ChatStyle
     let strings: HolloStrings
+    /** Opens the message's photo at this index full screen. */
+    let openPhoto: (Int) -> Void
+
+    private var label: String? {
+        message.sender == .ai ? strings.ai : message.sender == .team ? profileName : nil
+    }
 
     var body: some View {
         if message.isCard {
@@ -250,11 +265,27 @@ struct MessageRow: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 4)
+        } else if !message.photos.isEmpty {
+            let photos = message.photos
+            PhotoBubble(
+                count: photos.count, caption: message.body, mine: message.sender == .endUser,
+                label: label, style: style, strings: strings
+            ) { index, size in
+                Button {
+                    openPhoto(index)
+                } label: {
+                    RemotePhoto(url: photos[index], size: size, style: style)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(strings.photoLabel(index + 1, of: photos.count))
+                .accessibilityAddTraits(.isImage)
+            }
         } else {
             Bubble(
-                text: message.body,
+                // An image message whose links didn't arrive still says what it was.
+                text: message.body.isEmpty && message.kind == "image" ? strings.photo : message.body,
                 mine: message.sender == .endUser,
-                label: message.sender == .ai ? strings.ai : message.sender == .team ? profileName : nil,
+                label: label,
                 style: style,
                 strings: strings
             )
@@ -268,44 +299,57 @@ struct Bubble: View {
     let label: String?
     let style: ChatStyle
     let strings: HolloStrings
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if mine { Spacer(minLength: 48) }
+            BubbleText(text: text, mine: mine, label: label, style: style, strings: strings)
+            if !mine { Spacer(minLength: 48) }
+        }
+    }
+}
+
+/** A bubble's text and fill, without the row around it; photo captions use it too. */
+struct BubbleText: View {
+    let text: String
+    let mine: Bool
+    let label: String?
+    let style: ChatStyle
+    let strings: HolloStrings
     @Environment(\.self) private var environment
 
     var body: some View {
         let fill = mine ? style.userBubble : style.teamBubble
         let foreground = mine ? style.onAccent(fill, in: environment) : style.incomingText
-        HStack(spacing: 0) {
-            if mine { Spacer(minLength: 48) }
-            VStack(alignment: .leading, spacing: 2) {
-                if let label {
-                    Text(label)
-                        .font(.caption2)
-                        .foregroundStyle(mine ? foreground.opacity(0.7) : style.muted)
-                }
-                Text(HolloLinks.linkified(text))
-                    .font(style.font)
-                    .foregroundStyle(foreground)
-                    .tint(mine ? foreground : style.accent)
+        VStack(alignment: .leading, spacing: 2) {
+            if let label {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(mine ? foreground.opacity(0.7) : style.muted)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(
-                fill,
-                in: UnevenRoundedRectangle(
-                    topLeadingRadius: 18,
-                    bottomLeadingRadius: mine ? 18 : 6,
-                    bottomTrailingRadius: mine ? 6 : 18,
-                    topTrailingRadius: 18,
-                    style: .continuous
-                )
+            Text(HolloLinks.linkified(text))
+                .font(style.font)
+                .foregroundStyle(foreground)
+                .tint(mine ? foreground : style.accent)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(
+            fill,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 18,
+                bottomLeadingRadius: mine ? 18 : 6,
+                bottomTrailingRadius: mine ? 6 : 18,
+                topTrailingRadius: 18,
+                style: .continuous
             )
-            .contextMenu {
-                Button {
-                    UIPasteboard.general.string = text
-                } label: {
-                    Label(strings.copy, systemImage: "doc.on.doc")
-                }
+        )
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = text
+            } label: {
+                Label(strings.copy, systemImage: "doc.on.doc")
             }
-            if !mine { Spacer(minLength: 48) }
         }
     }
 }
@@ -319,8 +363,23 @@ struct PendingRow: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 3) {
-            Bubble(text: item.body, mine: true, label: nil, style: style, strings: strings)
-                .opacity(item.state == .failed ? 0.5 : 0.7)
+            Group {
+                if item.photos.isEmpty {
+                    Bubble(text: item.body, mine: true, label: nil, style: style, strings: strings)
+                } else {
+                    let photos = item.photos
+                    PhotoBubble(
+                        count: photos.count, caption: item.body, mine: true,
+                        label: nil, style: style, strings: strings
+                    ) { index, size in
+                        LocalPhoto(jpeg: photos[index], size: size, style: style)
+                            .accessibilityElement()
+                            .accessibilityLabel(strings.photoLabel(index + 1, of: photos.count))
+                            .accessibilityAddTraits(.isImage)
+                    }
+                }
+            }
+            .opacity(item.state == .failed ? 0.5 : 0.7)
             switch item.state {
             case .sending:
                 Text(strings.sending).font(.caption2).foregroundStyle(style.muted)
@@ -445,14 +504,65 @@ struct Composer: View {
     let style: ChatStyle
     let strings: HolloStrings
     @State private var draft = ""
+    @State private var photos: [DraftPhoto] = []
+    @State private var picked: [PhotosPickerItem] = []
+    /** Photos still being read and compressed. */
+    @State private var preparing = 0
+    @State private var photoFailed = false
     @Environment(\.self) private var environment
 
     private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        preparing == 0
+            && (!photos.isEmpty || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    /** How many more photos this message can take. */
+    private var room: Int {
+        HolloPhotos.maxPerMessage - photos.count - preparing
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !photos.isEmpty || preparing > 0 {
+                DraftStrip(photos: photos, preparing: preparing, style: style, strings: strings) { id in
+                    photos.removeAll { $0.id == id }
+                }
+            }
+            if photoFailed {
+                Text(strings.photoFailed)
+                    .font(.caption)
+                    .foregroundStyle(style.muted)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+            field
+        }
+        .onChange(of: picked) {
+            add(picked)
+        }
+    }
+
+    private var field: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            // The system picker runs outside the app, so it needs no photo
+            // library permission and no usage string in Info.plist.
+            PhotosPicker(
+                selection: $picked,
+                maxSelectionCount: max(1, room),
+                selectionBehavior: .ordered,
+                matching: .images,
+                preferredItemEncoding: .compatible
+            ) {
+                Image(systemName: "photo")
+                    .font(.system(size: 19))
+                    .foregroundStyle(style.text)
+                    .frame(width: 40, height: 40)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(room <= 0)
+            .opacity(room <= 0 ? 0.35 : 1)
+            .accessibilityLabel(strings.addPhotos)
             TextField(strings.placeholder, text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .font(style.font)
@@ -483,9 +593,97 @@ struct Composer: View {
 
     private func send() {
         let text = draft
+        let jpegs = photos.map(\.jpeg)
         draft = ""
+        photos = []
+        photoFailed = false
         // The outbox keeps it, so nothing is lost if it can't go out yet.
-        store.send(text)
+        store.send(text, photos: jpegs)
+    }
+
+    /** Compresses newly picked photos, in the order they were picked. */
+    @MainActor private func add(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        picked = []
+        let items = Array(items.prefix(max(0, room)))
+        photoFailed = false
+        preparing += items.count
+        Task {
+            for item in items {
+                let jpeg = await Self.prepare(item)
+                preparing -= 1
+                if let jpeg, let photo = DraftPhoto(jpeg: jpeg) {
+                    photos.append(photo)
+                } else {
+                    photoFailed = true
+                }
+            }
+        }
+    }
+
+    private static func prepare(_ item: PhotosPickerItem) async -> Data? {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return nil }
+        // Off the main thread: decoding a 48 MP photo takes a moment.
+        return await Task.detached(priority: .userInitiated) {
+            HolloPhotos.jpeg(from: data)
+        }.value
+    }
+}
+
+/** A photo picked for the next message, compressed and ready to upload. */
+struct DraftPhoto: Identifiable {
+    let id = UUID()
+    let jpeg: Data
+    let preview: UIImage
+
+    init?(jpeg: Data) {
+        guard let thumbnail = HolloPhotos.thumbnail(jpeg, maxEdge: 240) else { return nil }
+        self.jpeg = jpeg
+        preview = UIImage(cgImage: thumbnail)
+    }
+}
+
+/** The picked photos above the composer, each with a remove button. */
+struct DraftStrip: View {
+    let photos: [DraftPhoto]
+    let preparing: Int
+    let style: ChatStyle
+    let strings: HolloStrings
+    let remove: (UUID) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+                    Image(uiImage: photo.preview)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .accessibilityLabel(strings.photoLabel(index + 1, of: photos.count))
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                remove(photo.id)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(style.background, style.text)
+                            }
+                            .buttonStyle(.plain)
+                            .offset(x: 6, y: -6)
+                            .accessibilityLabel(strings.removePhoto)
+                        }
+                }
+                ForEach(0..<preparing, id: \.self) { _ in
+                    ProgressView()
+                        .frame(width: 64, height: 64)
+                        .background(style.teamBubble, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
     }
 }
 

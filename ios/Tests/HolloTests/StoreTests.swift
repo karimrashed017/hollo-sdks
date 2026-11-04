@@ -54,6 +54,51 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(store.messages.count, 1)
     }
 
+    func testUploadsPhotosThenSendsTheirPathsWithoutReuploadingOnRetry() async {
+        var uploads = 0
+        let server = FakeServer([
+            "POST /photos": { _ in
+                uploads += 1
+                return (201, ["photo": ["path": "ws/conv/p\(uploads).jpg"]])
+            },
+            "POST /messages": { _ in throw offlineError },
+        ])
+        let store = makeStore(server)
+        let jpegs = [Data([0xFF, 0xD8, 0x01]), Data([0xFF, 0xD8, 0x02])]
+
+        await store.send("  ", photos: jpegs).value
+        XCTAssertEqual(uploads, 2)
+        XCTAssertEqual(store.outbox.first?.state, .waiting)
+        XCTAssertEqual(store.outbox.first?.uploaded, ["ws/conv/p1.jpg", "ws/conv/p2.jpg"])
+
+        server.route("GET /messages") { _ in (200, ["messages": [Any](), "unread": 0]) }
+        server.route("POST /messages") { _ in
+            (201, ["message": photoMessageJSON("m1", at: "2026-11-02T10:00:00+00:00", photos: ["p1", "p2"])])
+        }
+        await store.refresh()
+
+        // The photos went up once; the retry only posted the message.
+        XCTAssertEqual(uploads, 2)
+        XCTAssertTrue(store.outbox.isEmpty)
+        XCTAssertEqual(store.messages.first?.photos.count, 2)
+        let sent = server.calls.last { $0.path == "/messages" && $0.method == "POST" }
+        XCTAssertEqual(sent?.body?["photos"] as? [String], ["ws/conv/p1.jpg", "ws/conv/p2.jpg"])
+        XCTAssertNil(sent?.body?["body"])
+    }
+
+    func testSendsAtMostFivePhotosAndNothingWhenEmpty() async {
+        let server = FakeServer([
+            "POST /photos": { _ in throw offlineError },
+        ])
+        let store = makeStore(server)
+
+        await store.send("", photos: []).value
+        XCTAssertTrue(store.outbox.isEmpty)
+
+        await store.send("", photos: Array(repeating: Data([0xFF, 0xD8]), count: 7)).value
+        XCTAssertEqual(store.outbox.first?.photos.count, HolloPhotos.maxPerMessage)
+    }
+
     func testMergesPollsInTimeOrderWithoutDuplicates() async {
         let server = FakeServer([
             "GET /messages": { _ in

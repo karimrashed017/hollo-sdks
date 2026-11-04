@@ -394,6 +394,151 @@ class HolloClientTest {
     }
 
     @Test
+    fun uploadsAPhotoAsRawJpegBytes() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        val server = FakeServer(
+            mapOf("POST /photos" to { _: HolloHttpRequest -> 201 to """{"photo":{"path":"ws1/app1/p1.jpg"}}""" }),
+        )
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2, 3)
+
+        assertEquals("ws1/app1/p1.jpg", client(storage, server).uploadPhoto(jpeg))
+
+        val upload = server.requests.single()
+        assertEquals("POST", upload.method)
+        assertEquals("https://hollo.so/api/v1/photos", upload.url)
+        assertEquals("image/jpeg", upload.headers["content-type"])
+        assertEquals(APP_KEY, upload.headers["x-hollo-app-key"])
+        assertEquals("Bearer hdt_saved", upload.headers["authorization"])
+        assertNull("No JSON alongside the bytes", upload.body)
+        assertTrue(jpeg.contentEquals(upload.bytes))
+    }
+
+    @Test
+    fun reUploadsTheSameBytesAfterRegisteringAgain() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_old"
+        val server = FakeServer(
+            mapOf(
+                "POST /photos" to { request: HolloHttpRequest ->
+                    if (request.headers["authorization"] == "Bearer hdt_old") {
+                        401 to """{"error":{"code":"invalid_device","message":"Unknown"}}"""
+                    } else {
+                        201 to """{"photo":{"path":"p2.jpg"}}"""
+                    }
+                },
+                "POST /devices" to { _: HolloHttpRequest -> 201 to """{"deviceToken":"hdt_new"}""" },
+            ),
+        )
+        val jpeg = byteArrayOf(9, 8, 7)
+
+        assertEquals("p2.jpg", client(storage, server).uploadPhoto(jpeg))
+
+        val retry = server.requests.last()
+        assertEquals("Bearer hdt_new", retry.headers["authorization"])
+        assertEquals("image/jpeg", retry.headers["content-type"])
+        assertTrue(jpeg.contentEquals(retry.bytes))
+    }
+
+    @Test
+    fun photoErrorsComeBackWithTheirCodes() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        val server = FakeServer(
+            mapOf(
+                "POST /photos" to { _: HolloHttpRequest ->
+                    415 to """{"error":{"code":"unsupported_photo","message":"Not a photo"}}"""
+                },
+            ),
+        )
+        val api = client(storage, server)
+
+        val refused = expectHollo { api.uploadPhoto(byteArrayOf(1)) }
+        assertEquals("unsupported_photo", refused.code)
+        assertEquals(415, refused.status)
+
+        // Too big is refused on the phone, before any data is spent.
+        val tooBig = expectHollo { api.uploadPhoto(ByteArray(PHOTO_MAX_BYTES + 1)) }
+        assertEquals("photo_too_large", tooBig.code)
+        assertEquals(1, server.requests.size)
+    }
+
+    @Test
+    fun sendsPhotosWithAnOptionalCaption() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        val server = FakeServer(
+            mapOf(
+                "POST /messages" to { _: HolloHttpRequest ->
+                    201 to """
+                        {"message":{"id":"m10","sender":"end_user","kind":"image","body":"","created_at":"t",
+                          "payload":{"photos":["a.jpg","b.jpg"]},
+                          "photos":["https://cdn.example/a.jpg?token=1","https://cdn.example/b.jpg?token=2"]}}
+                    """.trimIndent()
+                },
+            ),
+        )
+        val api = client(storage, server)
+
+        val message = api.send("", photos = listOf("a.jpg", "b.jpg"))
+        val sent = bodyOf(server.requests.last())
+        assertEquals("""["a.jpg","b.jpg"]""", sent["photos"].toString())
+        assertFalse("No empty caption", sent.containsKey("body"))
+        assertEquals("application/json", server.requests.last().headers["content-type"])
+        assertEquals("image", message.kind)
+        assertEquals(listOf("https://cdn.example/a.jpg?token=1", "https://cdn.example/b.jpg?token=2"), message.photos)
+
+        api.send("The error screen", photos = listOf("a.jpg"))
+        val captioned = bodyOf(server.requests.last())
+        assertEquals(JsonPrimitive("The error screen"), captioned["body"])
+        assertEquals("""["a.jpg"]""", captioned["photos"].toString())
+
+        api.send("Just text")
+        val text = bodyOf(server.requests.last())
+        assertEquals(JsonPrimitive("Just text"), text["body"])
+        assertFalse("No photos key without photos", text.containsKey("photos"))
+    }
+
+    @Test
+    fun readsPhotosLenientlyFromTheList() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        val server = FakeServer(
+            mapOf(
+                "GET /messages" to { _: HolloHttpRequest ->
+                    200 to """
+                        {"messages":[
+                          {"id":"m1","sender":"end_user","kind":"image","body":"Look","created_at":"t1",
+                           "photos":["https://cdn.example/1.jpg",42,null,"javascript:alert(1)","http://127.0.0.1:54321/2.jpg"]},
+                          {"id":"m2","sender":"team","kind":"text","body":"Older message","created_at":"t2"},
+                          {"id":"m3","sender":"end_user","kind":"image","body":"","created_at":"t3","photos":"oops"}
+                        ]}
+                    """.trimIndent()
+                },
+            ),
+        )
+        val messages = client(storage, server).messages().messages
+
+        assertEquals(listOf("m1", "m2", "m3"), messages.map { it.id })
+        assertEquals(listOf("https://cdn.example/1.jpg", "http://127.0.0.1:54321/2.jpg"), messages[0].photos)
+        assertEquals("Look", messages[0].body)
+        assertTrue("Older messages have none", messages[1].photos.isEmpty())
+        assertTrue("A malformed list is ignored", messages[2].photos.isEmpty())
+    }
+
+    @Test
+    fun shrinksPhotosToTheLongEdge() {
+        assertEquals(1600 to 1200, fitWithin(4000, 3000, 1600))
+        assertEquals(900 to 1600, fitWithin(2250, 4000, 1600))
+        assertEquals("Never enlarged", 800 to 600, fitWithin(800, 600, 1600))
+        // Decoded at a power-of-two step that stays at or above the target.
+        assertEquals(2, sampleSize(4000, 3000, 1600))
+        assertEquals(4, sampleSize(8000, 6000, 1600))
+        assertEquals(1, sampleSize(1200, 900, 1600))
+        assertEquals(1, sampleSize(1200, 900, 0))
+    }
+
+    @Test
     fun erasingForgetsTheDevice() = runTest {
         val storage = MemoryStorage()
         storage.data[TOKEN_KEY] = "hdt_saved"

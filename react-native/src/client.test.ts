@@ -194,4 +194,42 @@ describe("HolloClient", () => {
       new HolloError("plan_required", "No plan", 402) as object,
     );
   });
+
+  it("uploads a photo as raw JPEG, then sends its path", async () => {
+    const server = fakeServer({
+      "POST /devices": () => [
+        201,
+        { deviceToken: "hdt_first_token_value_1234" },
+      ],
+      "POST /photos": () => [201, { photo: { path: "ws/conv/abc.jpg" } }],
+      "POST /messages": (call) => [
+        201,
+        {
+          message: {
+            id: "m1",
+            sender: "end_user",
+            kind: "image",
+            body: JSON.parse(call.init.body as string).body,
+            photos: ["https://x/abc.jpg"],
+            created_at: "2026-11-04T00:00:00Z",
+          },
+        },
+      ],
+    });
+    const api = client(memoryStorage(), server.fetch);
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff]);
+
+    const path = await api.uploadPhoto(jpeg);
+    const { message } = await api.send("This error", [path]);
+
+    const upload = server.calls[1];
+    expect(header(upload, "content-type")).toBe("image/jpeg");
+    expect(header(upload, "authorization")).toMatch(/^Bearer hdt_/);
+    expect(upload.init.body).toBe(jpeg);
+    expect(JSON.parse(server.calls[2].init.body as string)).toEqual({
+      body: "This error",
+      photos: ["ws/conv/abc.jpg"],
+    });
+    expect(message.photos).toEqual(["https://x/abc.jpg"]);
+  });
 });

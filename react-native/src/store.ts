@@ -1,5 +1,6 @@
 import {
   HolloClient,
+  MAX_PHOTOS,
   type ClientOptions,
   type HolloMessage,
   type HolloProfile,
@@ -129,13 +130,26 @@ export class HolloStore {
     );
   }
 
-  async send(body: string) {
+  /**
+   * Sends a message. `photos` are read and uploaded first (F-17); `read`
+   * turns a photo into the bytes to upload, so this file stays plain TS.
+   */
+  async send<P>(
+    body: string,
+    photos: P[] = [],
+    read?: (photo: P) => Promise<Blob | ArrayBuffer | Uint8Array>,
+  ) {
     const text = body.trim();
-    if (!text) return;
+    if (!text && !photos.length) return;
     this.set({ sending: true, error: null });
     const first = !this.state.messages.some((m) => m.sender === "end_user");
     try {
-      const { message } = await this.api.send(text);
+      const paths: string[] = [];
+      for (const photo of photos.slice(0, MAX_PHOTOS)) {
+        if (!read) break;
+        paths.push(await this.api.uploadPhoto(await read(photo)));
+      }
+      const { message } = await this.api.send(text, paths);
       this.set({ messages: [...this.state.messages, message] });
       if (first) void this.maybeAskForPush();
     } catch (error) {

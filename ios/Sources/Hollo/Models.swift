@@ -91,28 +91,34 @@ struct HolloMessage: Decodable, Identifiable, Hashable, Sendable {
 
     let id: String
     let sender: Sender
-    /** "text", "review_request", "offer", "link", or something newer. */
+    /** "text", "image", "review_request", "offer", "link", or something newer. */
     let kind: String
     let body: String
     /** Card details for review_request, offer and link messages. */
     let payload: Payload
+    /**
+     * Signed links to an image message's photos, in order (F-17). They
+     * expire after a day. Older servers leave the field out.
+     */
+    let photos: [URL]
     /** ISO time from the server; also the cursor for the next poll. */
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, sender, kind, body, payload
+        case id, sender, kind, body, payload, photos
         case createdAt = "created_at"
     }
 
     init(
         id: String, sender: Sender, kind: String = "text", body: String,
-        payload: Payload = [:], createdAt: String
+        payload: Payload = [:], photos: [URL] = [], createdAt: String
     ) {
         self.id = id
         self.sender = sender
         self.kind = kind
         self.body = body
         self.payload = payload
+        self.photos = photos
         self.createdAt = createdAt
     }
 
@@ -124,6 +130,12 @@ struct HolloMessage: Decodable, Identifiable, Hashable, Sendable {
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "text"
         body = try c.decodeIfPresent(String.self, forKey: .body) ?? ""
         payload = (try? c.decodeIfPresent(Payload.self, forKey: .payload)) ?? [:]
+        // One bad entry drops that photo, not the message. The server only
+        // signs https links; check on the way in too.
+        let photos = (try? c.decodeIfPresent([JSONValue].self, forKey: .photos)) ?? []
+        self.photos = photos.compactMap { value in
+            value.stringValue.flatMap { $0.hasPrefix("https://") ? URL(string: $0) : nil }
+        }
         createdAt = try c.decode(String.self, forKey: .createdAt)
     }
 
@@ -316,4 +328,8 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable {
     let id: UUID
     let body: String
     var state: State
+    /** Photos to attach, already compressed to JPEG on the device. */
+    var photos: [Data] = []
+    /** Paths of the photos uploaded so far, so a retry doesn't upload them again. */
+    var uploaded: [String] = []
 }

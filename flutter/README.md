@@ -12,10 +12,19 @@ dependencies:
     git:
       url: https://github.com/karimrashed017/hollo-sdks.git
       path: flutter
-      ref: 0.1.5
+      ref: 0.1.6
 ```
 
-It uses `http`, `shared_preferences` (to keep the device token) and `url_launcher` (to open store pages and links). After adding it, stop the app and run `flutter run` again; a hot reload doesn't pick up new plugins.
+It uses `http`, `shared_preferences` (to keep the device token), `url_launcher` (to open store pages and links) and `image_picker` (for photos). After adding it, stop the app and run `flutter run` again; a hot reload doesn't pick up new plugins.
+
+Users can attach up to 5 photos to a message (a screenshot of an error, say). They're resized and compressed on the device before upload, and open full screen with pinch to zoom. On iOS, add the photo library description `image_picker` asks for to `ios/Runner/Info.plist` (App Store review checks for it):
+
+```xml
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Attach photos to your support messages.</string>
+```
+
+Android needs no setup.
 
 ## Use
 

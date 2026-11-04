@@ -197,6 +197,46 @@ internal class HolloStore(private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * Uploads the photos [jpegs] makes, then sends them with [text] as the
+     * caption. Not queued like text: photos are big, so on any failure
+     * [onDone] gets false and the UI keeps the draft for another try.
+     */
+    fun sendPhotos(text: String, jpegs: suspend () -> List<ByteArray>, onDone: (sent: Boolean) -> Unit) {
+        val api = client
+        if (api == null) {
+            mutate { it.copy(error = "Call Hollo.start(context, appKey) before using Hollo.") }
+            onDone(false)
+            return
+        }
+        val first = _state.value.messages.none { it.sender == Sender.END_USER }
+        scope.launch {
+            val sent = try {
+                val photos = jpegs()
+                // Behind the text queue, so messages still arrive in the order written.
+                val message = sendLock.withLock {
+                    val paths = photos.map { api.uploadPhoto(it) }
+                    api.send(text.trim(), paths)
+                }
+                mutate { s ->
+                    s.copy(
+                        messages = if (s.messages.any { it.id == message.id }) s.messages else s.messages + message,
+                        error = null,
+                        offline = false,
+                    )
+                }
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                mutate { it.copy(error = e.message ?: "Couldn't send the photos.", offline = isOffline(e)) }
+                false
+            }
+            onDone(sent)
+            if (sent && first) maybeAskForPush()
+        }
+    }
+
     /** Sends queued messages in order; stops at the first network failure. */
     private suspend fun flush() {
         sendLock.withLock {

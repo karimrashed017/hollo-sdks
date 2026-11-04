@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,11 +25,24 @@ FakeServer chatServer(List<Map<String, Object?>> messages) {
           'open': false,
         }),
     'POST /messages': (request) {
-      final body = (jsonDecode(request.body) as Map<String, Object?>)['body'];
-      final created = message('${sent.length + 7}', 'end_user', '$body');
+      final fields = jsonDecode(request.body) as Map<String, Object?>;
+      final photos = fields['photos'];
+      final created = {
+        ...message(
+          '${sent.length + 7}',
+          'end_user',
+          '${fields['body'] ?? ''}',
+          kind: photos is List ? 'image' : 'text',
+        ),
+        if (photos is List)
+          'photos': [for (final path in photos) 'https://cdn.example/$path'],
+      };
       sent.add(created);
       return reply(201, {'message': created});
     },
+    'POST /photos': (_) => reply(201, {
+          'photo': {'path': 'p1.jpg'},
+        }),
     'POST /read': (_) => reply(200, {'unread': 0}),
     'POST /links/tap': (_) => reply(200, {'ok': true}),
   });
@@ -185,4 +199,82 @@ void main() {
 
     Hollo.debugReset();
   });
+
+  testWidgets('an image message shows its photos and caption, and opens '
+      'full screen', (tester) async {
+    final server = chatServer([
+      {
+        ...message('1', 'end_user', 'The sync error', kind: 'image'),
+        'photos': [
+          'https://cdn.example/1.jpg',
+          'https://cdn.example/2.jpg',
+        ],
+      },
+    ]);
+    await Hollo.start(appKey: appKey, httpClient: server.client);
+    await tester.pumpWidget(const MaterialApp(home: HolloChat()));
+    await load(tester);
+
+    expect(networkImage('https://cdn.example/1.jpg'), findsOneWidget);
+    expect(networkImage('https://cdn.example/2.jpg'), findsOneWidget);
+    expect(find.text('The sync error'), findsOneWidget);
+
+    await tester.tap(networkImage('https://cdn.example/2.jpg'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.text('2 / 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Close photo'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
+
+    Hollo.debugReset();
+  });
+
+  testWidgets('attaches photos, removes one and sends the other',
+      (tester) async {
+    final server = chatServer([]);
+    final limits = <int>[];
+    Hollo.pickPhotos = (limit) async {
+      limits.add(limit);
+      return [pixel, pixel];
+    };
+    await Hollo.start(appKey: appKey, httpClient: server.client);
+    await tester.pumpWidget(const MaterialApp(home: HolloChat()));
+    await load(tester);
+
+    await tester.tap(find.byTooltip('Attach photos'));
+    await load(tester);
+    expect(limits, [5]);
+    expect(find.byIcon(Icons.close), findsNWidgets(2));
+
+    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.pump();
+    expect(find.byIcon(Icons.close), findsOneWidget);
+
+    // Photos alone can be sent, with no caption.
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await load(tester);
+
+    expect(server.to('POST', '/photos').single.bodyBytes, pixel);
+    expect(jsonDecode(server.to('POST', '/messages').single.body), {
+      'photos': ['p1.jpg'],
+    });
+    expect(find.byIcon(Icons.close), findsNothing, reason: 'strip cleared');
+    expect(networkImage('https://cdn.example/p1.jpg'), findsOneWidget);
+
+    Hollo.debugReset();
+  });
 }
+
+/// A real 1×1 PNG, so the thumbnail strip can decode it.
+final Uint8List pixel = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+);
+
+Finder networkImage(String url) => find.byWidgetPredicate(
+      (widget) =>
+          widget is Image &&
+          widget.image is NetworkImage &&
+          (widget.image as NetworkImage).url == url,
+    );

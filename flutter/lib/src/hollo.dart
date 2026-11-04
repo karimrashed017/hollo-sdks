@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'client.dart';
@@ -56,6 +57,10 @@ abstract final class Hollo {
   /// Opens review, store and web links. Replaced in tests.
   @visibleForTesting
   static Future<bool> Function(Uri uri) openUrl = _launch;
+
+  /// Picks photos to attach. Replaced in tests.
+  @visibleForTesting
+  static HolloPhotoPicker pickPhotos = _pickPhotos;
 
   /// Live count of replies the user hasn't read, for your Support badge.
   static ValueListenable<int> get unreadCount => _store.unreadCount;
@@ -195,6 +200,7 @@ abstract final class Hollo {
     onLink = null;
     onPushPermission = null;
     openUrl = _launch;
+    pickPhotos = _pickPhotos;
     theme = HolloTheme.light;
     darkTheme = HolloTheme.dark;
     themeMode = ThemeMode.system;
@@ -254,6 +260,33 @@ abstract final class Hollo {
     }
   }
 
+  // The system picker resizes and compresses, so a photo uploads in well
+  // under the server's 4 MB, and on iOS it turns HEIC into JPEG, which the
+  // server can't read. Android may hand back a PNG as it is; the server
+  // takes those.
+  static Future<List<Uint8List>> _pickPhotos(int limit) async {
+    final picker = ImagePicker();
+    final List<XFile> files;
+    if (limit > 1) {
+      files = await picker.pickMultiImage(
+        limit: limit,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 70,
+      );
+    } else {
+      // pickMultiImage needs a limit of at least 2.
+      final file = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 70,
+      );
+      files = file == null ? const <XFile>[] : [file];
+    }
+    return Future.wait(files.take(limit).map((file) => file.readAsBytes()));
+  }
+
   static Future<bool> _launch(Uri uri) async {
     try {
       return await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -299,6 +332,7 @@ class HolloChat extends StatelessWidget {
           onLink: Hollo._link,
           // Looked up at tap time, so a replacement set later still applies.
           openUrl: (uri) => Hollo.openUrl(uri),
+          pickPhotos: (limit) => Hollo.pickPhotos(limit),
         );
       },
     );

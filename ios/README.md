@@ -39,6 +39,14 @@ Hollo's AI only runs account actions for verified users.
 Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServer)
 ```
 
+Users can attach up to 5 photos per message from the button beside the
+composer, and tap any photo to see it full screen with pinch and double-tap
+zoom. Photos are shrunk on the device first (long edge 1600 px, JPEG), which
+also turns HEIC into JPEG and drops the location metadata. The picker is the
+system one (`PhotosPicker`), so the app needs no photo library permission
+and no `NSPhotoLibraryUsageDescription`. `PrivacyInfo.xcprivacy` declares
+the photos as collected for app functionality.
+
 ## How it's built
 
 | File                 | What it does                                                        |
@@ -49,6 +57,8 @@ Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServe
 | `Models.swift`       | Lenient Codable models for the API                                  |
 | `Links.swift`        | Review URLs, link-card actions, hex tokens, link detection          |
 | `HolloChat.swift`    | The SwiftUI chat                                                    |
+| `PhotoViews.swift`   | Photo bubbles and the full-screen viewer                            |
+| `Photos.swift`       | On-device photo compression (ImageIO)                               |
 | `Presenter.swift`    | `HolloChatViewController` and the sheet `Hollo.present()` shows     |
 | `Theme.swift`        | `HolloTheme` and the black-and-white defaults                       |
 | `Strings.swift`      | The chat's labels in English, Spanish, French, German, Portuguese, Italian |
@@ -68,7 +78,7 @@ Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServe
 ## Tests
 
 `Tests/HolloTests` (XCTest) covers the client against a fake transport,
-decoding, link handling and the store. Open the repo root in Xcode and press
+decoding, link handling, photo compression and the store. Open the repo root in Xcode and press
 ⌘U, or:
 
 ```sh

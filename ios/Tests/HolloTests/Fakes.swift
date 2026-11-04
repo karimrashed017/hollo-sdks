@@ -19,13 +19,14 @@ final class MemoryStorage: HolloStorage, @unchecked Sendable {
     }
 }
 
-/** A recorded request, with its JSON body decoded. */
+/** A recorded request, with its JSON body decoded and the raw bytes kept. */
 struct Call {
     let method: String
     let path: String
     let query: String?
     let headers: [String: String]
     let body: [String: Any]?
+    let data: Data?
 
     func header(_ name: String) -> String? {
         headers.first { $0.key.lowercased() == name.lowercased() }?.value
@@ -59,7 +60,8 @@ final class FakeServer: HolloTransport, @unchecked Sendable {
             path: path,
             query: URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery,
             headers: request.allHTTPHeaderFields ?? [:],
-            body: body
+            body: body,
+            data: request.httpBody
         )
         let route: Route? = lock.withLock {
             recorded.append(call)
@@ -83,6 +85,15 @@ func makeClient(_ server: FakeServer, storage: MemoryStorage = MemoryStorage()) 
 
 func messageJSON(_ id: String, sender: String = "team", at time: String, body: String = "Hi") -> [String: Any] {
     ["id": id, "sender": sender, "kind": "text", "body": body, "payload": NSNull(), "created_at": time]
+}
+
+/** A photo message as the server returns it, with signed links. */
+func photoMessageJSON(_ id: String, at time: String, body: String = "", photos: [String]) -> [String: Any] {
+    [
+        "id": id, "sender": "end_user", "kind": "image", "body": body,
+        "payload": ["photos": photos.map { "ws/conv/\($0).jpg" }], "created_at": time,
+        "photos": photos.map { "https://storage.hollo.so/signed/\($0).jpg?token=t" },
+    ]
 }
 
 let offlineError = HolloError(code: "network_error", message: "Offline", status: 0)

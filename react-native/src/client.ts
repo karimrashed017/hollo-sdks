@@ -13,8 +13,13 @@ export type HolloMessage = {
   body: string;
   /** Card details for review_request and offer messages. */
   payload?: Record<string, unknown>;
+  /** Links to the photos of an image message, in order (F-17). */
+  photos?: string[];
   created_at: string;
 };
+
+/** Photos per message, as the server allows. */
+export const MAX_PHOTOS = 5;
 
 /** An offer card the user tapped; ref is the ID you set in the dashboard. */
 export type HolloOffer = { ref: string; title: string };
@@ -126,6 +131,8 @@ export class HolloClient {
     init: {
       method?: string;
       body?: unknown;
+      /** Sent as is (a photo), instead of a JSON body. */
+      raw?: { data: Blob | ArrayBuffer | Uint8Array; type: string };
       auth?: boolean;
     } = {},
     retried = false,
@@ -134,6 +141,7 @@ export class HolloClient {
       "x-hollo-app-key": this.options.appKey,
     };
     if (init.body !== undefined) headers["content-type"] = "application/json";
+    if (init.raw) headers["content-type"] = init.raw.type;
     if (init.auth !== false) {
       headers.authorization = `Bearer ${await this.deviceToken()}`;
     }
@@ -141,7 +149,11 @@ export class HolloClient {
     const response = await this.fetch(`${this.apiUrl}${path}`, {
       method: init.method ?? "GET",
       headers,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      body: init.raw
+        ? (init.raw.data as BodyInit)
+        : init.body === undefined
+          ? undefined
+          : JSON.stringify(init.body),
     });
     const data = (await response.json().catch(() => ({}))) as {
       error?: { code: string; message: string };
@@ -202,11 +214,21 @@ export class HolloClient {
     };
   }
 
-  send(body: string) {
+  /** Sends a message; `photos` are paths from uploadPhoto, up to five. */
+  send(body: string, photos: string[] = []) {
     return this.call<{ message: HolloMessage }>("/messages", {
       method: "POST",
-      body: { body },
+      body: photos.length ? { body, photos } : { body },
     });
+  }
+
+  /** Uploads one JPEG (compressed on the device) and returns its path. */
+  async uploadPhoto(jpeg: Blob | ArrayBuffer | Uint8Array) {
+    const { photo } = await this.call<{ photo: { path: string } }>("/photos", {
+      method: "POST",
+      raw: { data: jpeg, type: "image/jpeg" },
+    });
+    return photo.path;
   }
 
   /** Counts a link card tap; opened is false when nothing could open it. */

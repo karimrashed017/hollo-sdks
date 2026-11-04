@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  ScrollView,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -13,8 +14,15 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type { HolloMessage, HolloOffer } from "./client";
+import { MAX_PHOTOS, type HolloMessage, type HolloOffer } from "./client";
 import { reviewUrl } from "./links";
+import { PhotoMessage, PhotoViewer } from "./photo-viewer";
+import {
+  canAttachPhotos,
+  photoBlob,
+  pickPhotos,
+  type PhotoDraft,
+} from "./photos";
 import type { HolloState, HolloStore } from "./store";
 import { chatColors, type ChatColors, type HolloTheme } from "./theme";
 
@@ -44,7 +52,13 @@ export function HolloChat({
   const theme = chatColors(localTheme, state.remoteTheme);
   const profile = state.profile;
   const [draft, setDraft] = useState("");
+  const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const [viewing, setViewing] = useState<{
+    urls: string[];
+    index: number;
+  } | null>(null);
   const list = useRef<FlatList<HolloMessage>>(null);
+  const canSend = (!!draft.trim() || photos.length > 0) && !state.sending;
 
   // Embedded chats count as open while they're on screen.
   useEffect(() => {
@@ -55,11 +69,25 @@ export function HolloChat({
 
   async function send() {
     const text = draft;
+    const attached = photos;
     setDraft("");
+    setPhotos([]);
     try {
-      await store.send(text);
+      await store.send(text, attached, (photo) => photoBlob(photo.uri));
     } catch {
+      // Keep the draft, photos too, so they can send it again.
       setDraft(text);
+      setPhotos(attached);
+    }
+  }
+
+  async function attach() {
+    try {
+      const picked = await pickPhotos(MAX_PHOTOS - photos.length);
+      if (picked.length)
+        setPhotos((p) => [...p, ...picked].slice(0, MAX_PHOTOS));
+    } catch {
+      // The picker failed or was refused: nothing to attach.
     }
   }
 
@@ -135,6 +163,7 @@ export function HolloChat({
             <View
               style={[
                 styles.bubble,
+                item.kind === "image" && styles.photoBubble,
                 mine
                   ? [styles.mine, { backgroundColor: theme.accent }]
                   : [styles.theirs, { backgroundColor: theme.bubble }],
@@ -148,15 +177,31 @@ export function HolloChat({
                   {profile.name}
                 </Text>
               )}
-              <Text
-                style={{
-                  color: mine ? theme.onAccent : theme.incomingText,
-                  fontSize: 15,
-                  lineHeight: 21,
-                }}
-              >
-                {item.body}
-              </Text>
+              {item.kind === "image" && (
+                <PhotoMessage
+                  urls={item.photos ?? []}
+                  theme={theme}
+                  onOpen={(index) =>
+                    setViewing({ urls: item.photos ?? [], index })
+                  }
+                />
+              )}
+              {!!item.body && (
+                <Text
+                  style={{
+                    color: mine ? theme.onAccent : theme.incomingText,
+                    fontSize: 15,
+                    lineHeight: 21,
+                    ...(item.kind === "image" && {
+                      paddingHorizontal: 10,
+                      paddingTop: 4,
+                      paddingBottom: 4,
+                    }),
+                  }}
+                >
+                  {item.body}
+                </Text>
+              )}
             </View>
           );
         }}
@@ -168,6 +213,36 @@ export function HolloChat({
         </Text>
       )}
 
+      {photos.length > 0 && (
+        <ScrollView
+          horizontal
+          style={styles.drafts}
+          contentContainerStyle={styles.draftsContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {photos.map((photo, i) => (
+            <View key={photo.uri}>
+              <Image
+                source={{ uri: photo.uri }}
+                style={[styles.draft, { backgroundColor: theme.bubble }]}
+                accessibilityLabel={`Photo ${i + 1} to send`}
+              />
+              <Pressable
+                onPress={() =>
+                  setPhotos((p) => p.filter((x) => x.uri !== photo.uri))
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Remove photo ${i + 1}`}
+                hitSlop={8}
+                style={[styles.removeDraft, { backgroundColor: theme.text }]}
+              >
+                <Text style={{ color: theme.background, fontSize: 12 }}>✕</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
       <View
         style={[
           styles.composer,
@@ -175,6 +250,23 @@ export function HolloChat({
           state.branding && { paddingBottom: 8 },
         ]}
       >
+        {canAttachPhotos && (
+          <Pressable
+            onPress={() => void attach()}
+            disabled={photos.length >= MAX_PHOTOS || state.sending}
+            accessibilityRole="button"
+            accessibilityLabel="Attach photos"
+            style={[
+              styles.attach,
+              {
+                borderColor: theme.bubble,
+                opacity: photos.length >= MAX_PHOTOS ? 0.35 : 1,
+              },
+            ]}
+          >
+            <PhotoIcon color={theme.text} />
+          </Pressable>
+        )}
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -190,14 +282,14 @@ export function HolloChat({
         />
         <Pressable
           onPress={send}
-          disabled={!draft.trim() || state.sending}
+          disabled={!canSend}
           accessibilityRole="button"
           accessibilityLabel="Send message"
           style={[
             styles.send,
             {
               backgroundColor: theme.accent,
-              opacity: !draft.trim() || state.sending ? 0.35 : 1,
+              opacity: canSend ? 1 : 0.35,
             },
           ]}
         >
@@ -210,6 +302,12 @@ export function HolloChat({
       </View>
 
       {state.branding && <BrandingFooter theme={theme} />}
+      <PhotoViewer
+        urls={viewing?.urls ?? []}
+        index={viewing?.index ?? 0}
+        visible={!!viewing}
+        onClose={() => setViewing(null)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -274,6 +372,16 @@ function PushFooter({
     );
   }
   return null;
+}
+
+/** A small picture icon in Views, so there's no icon dependency. */
+function PhotoIcon({ color }: { color: string }) {
+  return (
+    <View style={[styles.photoIcon, { borderColor: color }]}>
+      <View style={[styles.photoIconSun, { backgroundColor: color }]} />
+      <View style={[styles.photoIconHill, { borderBottomColor: color }]} />
+    </View>
+  );
 }
 
 /** The owner's photo when they've added one, otherwise the Hollo dot. */
@@ -544,6 +652,55 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === "ios" ? 24 : 8,
   },
   brandingText: { fontSize: 11, fontWeight: "500" },
+  attach: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoIcon: {
+    width: 20,
+    height: 16,
+    borderWidth: 1.5,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  photoIconSun: {
+    position: "absolute",
+    top: 2,
+    right: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  photoIconHill: {
+    position: "absolute",
+    bottom: -1,
+    left: 1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+  },
+  photoBubble: { padding: 4, paddingBottom: 4 },
+  drafts: { flexGrow: 0 },
+  draftsContent: { gap: 8, paddingHorizontal: 12, paddingTop: 8 },
+  draft: { width: 56, height: 56, borderRadius: 10 },
+  removeDraft: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   send: {
     width: 40,
     height: 40,

@@ -193,10 +193,11 @@ final class HolloStore {
      * outbox and goes out with the next successful poll, while the app is open.
      */
     @discardableResult
-    func send(_ text: String) -> Task<Void, Never> {
+    func send(_ text: String, photos: [Data] = []) -> Task<Void, Never> {
         let body = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
-        guard !body.isEmpty else { return Task {} }
-        outbox.append(OutgoingMessage(id: UUID(), body: body, state: .sending))
+        let photos = Array(photos.prefix(HolloPhotos.maxPerMessage))
+        guard !body.isEmpty || !photos.isEmpty else { return Task {} }
+        outbox.append(OutgoingMessage(id: UUID(), body: body, state: .sending, photos: photos))
         return Task { await flushOutbox() }
     }
 
@@ -219,7 +220,13 @@ final class HolloStore {
             outbox[index].state = .sending
             let first = !messages.contains { $0.sender == .endUser }
             do {
-                let message = try await client.send(item.body)
+                var paths = item.uploaded
+                for jpeg in item.photos.dropFirst(paths.count) {
+                    let path = try await client.uploadPhoto(jpeg)
+                    paths.append(path)
+                    if let i = outbox.firstIndex(where: { $0.id == item.id }) { outbox[i].uploaded = paths }
+                }
+                let message = try await client.send(item.body, photos: paths)
                 // It reached the server either way, so never send it twice.
                 outbox.removeAll { $0.id == item.id }
                 guard epoch == self.epoch else { return }
@@ -234,6 +241,9 @@ final class HolloStore {
                 let connectivity = (error as? HolloError)?.isConnectivity ?? true
                 if let i = outbox.firstIndex(where: { $0.id == item.id }) {
                     outbox[i].state = connectivity ? .waiting : .failed
+                    // Uploads belong to one conversation; after a sign-in
+                    // switched it, a retry uploads them again.
+                    if (error as? HolloError)?.code == "invalid_photo" { outbox[i].uploaded = [] }
                 }
                 if connectivity {
                     // Keep the order: the rest wait for the connection too.

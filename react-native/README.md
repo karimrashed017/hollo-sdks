@@ -17,6 +17,15 @@ Hollo.present();
 Hollo.identify({ id: user.id, email: user.email });
 ```
 
+To let users attach up to 5 photos to a message (screenshots of an error,
+say), also install the two Expo modules the photo picker uses. Photos are
+compressed on the device, and Hollo's AI reads them. Without these the
+chat simply has no attach button.
+
+```bash
+npx expo install expo-image-picker expo-image-manipulator
+```
+
 Pass an identity token signed by your server to mark the user as verified.
 Hollo's AI only runs account actions for verified users.
 

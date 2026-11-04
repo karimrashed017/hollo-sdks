@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hollo/src/client.dart';
@@ -399,6 +400,158 @@ void main() {
         'opened': false,
       });
       expect(bodyOf(server.to('POST', '/events').last), {'subscriber': true});
+    });
+  });
+
+  group('Photos', () {
+    // A JPEG's first bytes, which is all the fake server needs.
+    final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+    const path = 'w/c/abcdefghijklmnop.jpg';
+
+    test('uploads the raw JPEG bytes with the device token', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'POST /photos': (_) => reply(201, {
+              'photo': {'path': path},
+            }),
+      });
+
+      expect(await clientFor(server.client).uploadPhoto(jpeg), path);
+
+      final upload = server.to('POST', '/photos').single;
+      expect(upload.headers['content-type'], 'image/jpeg');
+      expect(upload.headers['x-hollo-app-key'], appKey);
+      expect(upload.headers['authorization'], 'Bearer hdt_saved_token_value_1234');
+      expect(upload.bodyBytes, jpeg);
+    });
+
+    test('uploads again with a new device when the old one is forgotten',
+        () async {
+      await storage.setItem(tokenKey, 'hdt_old_token_value_123456');
+      final server = FakeServer({
+        'POST /photos': (request) =>
+            request.headers['authorization'] ==
+                    'Bearer hdt_old_token_value_123456'
+                ? reply(401, {
+                    'error': {'code': 'invalid_device', 'message': 'Unknown'},
+                  })
+                : reply(201, {
+                    'photo': {'path': path},
+                  }),
+        'POST /devices': (_) =>
+            reply(201, {'deviceToken': 'hdt_new_token_value_123456'}),
+      });
+
+      expect(await clientFor(server.client).uploadPhoto(jpeg), path);
+
+      final uploads = server.to('POST', '/photos');
+      expect(uploads, hasLength(2));
+      expect(uploads.last.bodyBytes, jpeg, reason: 'the retry keeps the bytes');
+      expect(uploads.last.headers['content-type'], 'image/jpeg');
+    });
+
+    test('surfaces the server refusing a photo', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'POST /photos': (_) => reply(415, {
+              'error': {'code': 'unsupported_photo', 'message': 'Not a photo'},
+            }),
+      });
+
+      await expectLater(
+        clientFor(server.client).uploadPhoto(jpeg),
+        throwsA(
+          isA<HolloError>()
+              .having((e) => e.code, 'code', 'unsupported_photo')
+              .having((e) => e.status, 'status', 415),
+        ),
+      );
+    });
+
+    test('refuses a photo over 4 MB without sending it', () async {
+      final server = FakeServer({});
+
+      await expectLater(
+        clientFor(server.client)
+            .uploadPhoto(Uint8List(holloMaxPhotoBytes + 1)),
+        throwsA(
+          isA<HolloError>().having((e) => e.code, 'code', 'photo_too_large'),
+        ),
+      );
+      expect(server.calls, isEmpty);
+    });
+
+    test('sends photo paths with an optional caption', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'POST /messages': (_) => reply(201, {
+              'message': message(
+                '1',
+                'end_user',
+                '',
+                kind: 'image',
+                payload: {
+                  'photos': [path],
+                },
+              ),
+            }),
+      });
+      final api = clientFor(server.client);
+
+      await api.send('', photos: [path]);
+      await api.send('The error', photos: [path, path]);
+      await api.send('Just text');
+
+      final sent = server.to('POST', '/messages').map(bodyOf).toList();
+      expect(sent[0], {
+        'photos': [path],
+      });
+      expect(sent[1], {
+        'body': 'The error',
+        'photos': [path, path],
+      });
+      expect(sent[2], {'body': 'Just text'});
+    });
+
+    test('reads photo URLs, and none from older servers', () async {
+      await storage.setItem(tokenKey, 'hdt_saved_token_value_1234');
+      final server = FakeServer({
+        'GET /messages': (_) => reply(200, {
+              'messages': [
+                {
+                  ...message(
+                    '1',
+                    'end_user',
+                    'See this',
+                    kind: 'image',
+                    payload: {
+                      'photos': [path, path],
+                    },
+                  ),
+                  'photos': [
+                    'https://cdn.example/1.jpg?token=a',
+                    'javascript:alert(1)',
+                    42,
+                    'https://cdn.example/2.jpg?token=b',
+                  ],
+                },
+                message('2', 'team', 'Thanks'),
+                {...message('3', 'end_user', ''), 'photos': 'not a list'},
+              ],
+              'unread': 0,
+            }),
+      });
+
+      final page = await clientFor(server.client).messages();
+
+      expect(page.messages[0].kind, 'image');
+      expect(page.messages[0].body, 'See this');
+      expect(page.messages[0].photos, [
+        'https://cdn.example/1.jpg?token=a',
+        'https://cdn.example/2.jpg?token=b',
+      ]);
+      expect(page.messages[1].photos, isEmpty);
+      expect(page.messages[2].photos, isEmpty);
     });
   });
 }

@@ -2,7 +2,7 @@ name: hollo
 description: >-
   Hollo in-app support chat for Flutter apps: a chat screen, an unread badge,
   review, offer and link cards, and push hand-off. Pure Dart, no native code.
-version: 0.1.5
+version: 0.1.6
 homepage: https://hollo.so
 repository: https://github.com/karimrashed017/hollo/tree/main/sdks/flutter
 # Installed from git until it's on pub.dev.
@@ -16,6 +16,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
+  image_picker: ^1.1.0
   shared_preferences: ^2.2.0
   url_launcher: ^6.2.0
 

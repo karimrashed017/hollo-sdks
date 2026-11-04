@@ -156,6 +156,12 @@ actor HolloClient {
 
     // MARK: Requests
 
+    /** A raw request body, like a photo's bytes. */
+    struct Upload: Sendable {
+        let data: Data
+        let contentType: String
+    }
+
     /// The server's error body: { "error": { "code", "message" } }.
     private struct APIFailure: Decodable {
         struct Detail: Decodable { let code: String?; let message: String? }
@@ -167,17 +173,22 @@ actor HolloClient {
         method: String = "GET",
         query: [String: String] = [:],
         body: JSONValue? = nil,
+        upload: Upload? = nil,
         auth: Bool = true,
         retried: Bool = false
     ) async throws -> T {
         var request = URLRequest(url: try url(path, query: query))
         request.httpMethod = method
-        request.timeoutInterval = 20
+        // A few megabytes on a slow connection take longer than a message.
+        request.timeoutInterval = upload == nil ? 20 : 60
         request.setValue(appKey, forHTTPHeaderField: "x-hollo-app-key")
         request.setValue("application/json", forHTTPHeaderField: "accept")
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "content-type")
             request.httpBody = try JSONEncoder().encode(body)
+        } else if let upload {
+            request.setValue(upload.contentType, forHTTPHeaderField: "content-type")
+            request.httpBody = upload.data
         }
         if auth {
             let token = try await deviceToken()
@@ -193,7 +204,9 @@ actor HolloClient {
             // register again, once.
             if code == "invalid_device" && auth && !retried {
                 forgetDevice()
-                return try await call(path, method: method, query: query, body: body, auth: auth, retried: true)
+                return try await call(
+                    path, method: method, query: query, body: body, upload: upload, auth: auth, retried: true
+                )
             }
             throw HolloError(
                 code: code,
@@ -257,10 +270,30 @@ actor HolloClient {
         try await call("/messages", query: after.map { ["after": $0] } ?? [:])
     }
 
-    func send(_ text: String) async throws -> HolloMessage {
+    /** Sends text, up to five photo paths from `uploadPhoto`, or both. */
+    func send(_ text: String, photos: [String] = []) async throws -> HolloMessage {
         struct Sent: Decodable { let message: HolloMessage }
-        let sent: Sent = try await call("/messages", method: "POST", body: .object(["body": .string(text)]))
+        var body: [String: JSONValue] = [:]
+        // With photos the text is an optional caption, so leave it out when empty.
+        if !text.isEmpty || photos.isEmpty { body["body"] = .string(text) }
+        if !photos.isEmpty { body["photos"] = .array(photos.map { .string($0) }) }
+        let sent: Sent = try await call("/messages", method: "POST", body: .object(body))
         return sent.message
+    }
+
+    /**
+     * Uploads one photo, already a JPEG under 4 MB (see `HolloPhotos`), and
+     * returns the path to send with the message.
+     */
+    func uploadPhoto(_ jpeg: Data) async throws -> String {
+        struct Uploaded: Decodable {
+            struct Photo: Decodable { let path: String }
+            let photo: Photo
+        }
+        let uploaded: Uploaded = try await call(
+            "/photos", method: "POST", upload: Upload(data: jpeg, contentType: "image/jpeg")
+        )
+        return uploaded.photo.path
     }
 
     /** Counts a link card tap; opened is false when nothing could open it. */

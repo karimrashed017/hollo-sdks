@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- Photo attachments: an attach button beside the composer lets users send up to 5 photos, with an optional caption. They're resized and compressed on the device through `image_picker`, which needs `NSPhotoLibraryUsageDescription` in the iOS app's `Info.plist`.
+- Photos in the chat open full screen, with pinch and double-tap to zoom and swiping between a message's photos.
+- `HolloMessage.photos` holds an image message's photo URLs. Older servers send none.
+
 ## 0.1.0
 
 First version, feature-equivalent to the React Native SDK.

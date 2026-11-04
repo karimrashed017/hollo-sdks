@@ -168,16 +168,25 @@ class HolloStore extends ChangeNotifier {
     _messages = List<HolloMessage>.unmodifiable([..._messages, ...fresh]);
   }
 
-  Future<void> send(String body) async {
+  /// Sends [body], with up to five [photos] (JPEG bytes from the picker).
+  /// With photos the text is an optional caption. The photos upload first,
+  /// so a failed upload sends nothing and the user can try again.
+  Future<void> send(
+    String body, {
+    List<Uint8List> photos = const <Uint8List>[],
+  }) async {
     final text = body.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && photos.isEmpty) return;
     final client = _api;
     final first = !_messages.any((message) => message.fromUser);
     _sending = true;
     _error = null;
     notifyListeners();
     try {
-      _append([await client.send(text)]);
+      final paths = await Future.wait(
+        photos.take(holloMaxPhotos).map(client.uploadPhoto),
+      );
+      _append([await client.send(text, photos: paths)]);
       if (first) unawaited(_maybeAskForPush());
     } catch (error) {
       _error = error is HolloError ? error.message : error.toString();

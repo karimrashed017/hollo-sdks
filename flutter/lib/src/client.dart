@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -10,8 +11,15 @@ import 'storage.dart';
 // http.Client. Talks to the SDK API at https://hollo.so/api/v1 with the app
 // key and this install's device token.
 
-const String holloSdkVersion = '0.1.5';
+const String holloSdkVersion = '0.1.6';
 const String holloApiUrl = 'https://hollo.so/api/v1';
+
+/// The most photos one message can carry (F-17).
+const int holloMaxPhotos = 5;
+
+/// The server refuses bigger uploads. The picker's resizing and compression
+/// keep a real photo far below it.
+const int holloMaxPhotoBytes = 4 * 1024 * 1024;
 
 /// A failed Hollo call. [code] is the API's error code, like
 /// `plan_required`, or `network_error` when Hollo couldn't be reached.
@@ -111,6 +119,8 @@ class HolloClient {
     String method,
     String path, {
     Object? body,
+    Uint8List? bytes,
+    String? contentType,
     bool auth = true,
     bool retried = false,
   }) async {
@@ -122,6 +132,11 @@ class HolloClient {
     if (body != null) {
       request.headers['content-type'] = 'application/json';
       request.body = jsonEncode(body);
+    } else if (bytes != null) {
+      // A raw upload: a photo.
+      request.headers['content-type'] =
+          contentType ?? 'application/octet-stream';
+      request.bodyBytes = bytes;
     }
 
     final http.Response response;
@@ -148,7 +163,15 @@ class HolloClient {
       // again and retry once.
       if (code == 'invalid_device' && auth && !retried) {
         await forgetDevice();
-        return _call(method, path, body: body, auth: auth, retried: true);
+        return _call(
+          method,
+          path,
+          body: body,
+          bytes: bytes,
+          contentType: contentType,
+          auth: auth,
+          retried: true,
+        );
       }
       throw HolloError(
         code,
@@ -220,9 +243,46 @@ class HolloClient {
     );
   }
 
-  Future<HolloMessage> send(String body) async {
-    final data = await _call('POST', '/messages', body: {'body': body});
+  /// Sends a message. [photos] are paths from [uploadPhoto]; with photos the
+  /// text is an optional caption.
+  Future<HolloMessage> send(
+    String body, {
+    List<String> photos = const <String>[],
+  }) async {
+    final data = await _call(
+      'POST',
+      '/messages',
+      body: {
+        if (body.isNotEmpty || photos.isEmpty) 'body': body,
+        if (photos.isNotEmpty) 'photos': photos,
+      },
+    );
     return HolloMessage.fromJson(readMap(data['message']));
+  }
+
+  /// Uploads one photo, already resized and compressed on the device, and
+  /// returns its path for [send]. The server checks the bytes themselves, so
+  /// a PNG the Android picker leaves as it is works too.
+  Future<String> uploadPhoto(Uint8List jpeg) async {
+    if (jpeg.length > holloMaxPhotoBytes) {
+      // The server would refuse it; don't spend the user's data finding out.
+      throw const HolloError(
+        'photo_too_large',
+        'Photos can be up to 4 MB.',
+        0,
+      );
+    }
+    final data = await _call(
+      'POST',
+      '/photos',
+      bytes: jpeg,
+      contentType: 'image/jpeg',
+    );
+    final path = readString(readMap(data['photo'])['path']);
+    if (path == null) {
+      throw const HolloError('server_error', 'Hollo sent no photo path.', 0);
+    }
+    return path;
   }
 
   /// Counts a link card tap. [opened] is false when nothing could open it.

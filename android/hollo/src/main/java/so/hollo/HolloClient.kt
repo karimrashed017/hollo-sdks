@@ -9,9 +9,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
 // The Hollo HTTP client: no Android UI, so it can be unit-tested. Talks to the
@@ -63,20 +65,27 @@ internal class HolloClient(
         body: JsonObject? = null,
         auth: Boolean = true,
         retried: Boolean = false,
+        /** A raw upload instead of JSON, with its [contentType]. */
+        bytes: ByteArray? = null,
+        contentType: String? = null,
     ): JsonObject {
         val headers = linkedMapOf(
             "x-hollo-app-key" to appKey,
             "accept" to "application/json",
         )
         // Some HTTP stacks refuse a POST without a body, so send "{}".
-        val payload = body ?: if (method == "POST") JsonObject(emptyMap()) else null
-        if (payload != null) headers["content-type"] = "application/json"
+        val payload = if (bytes != null) null else body ?: if (method == "POST") JsonObject(emptyMap()) else null
+        if (bytes != null) {
+            headers["content-type"] = contentType ?: "application/octet-stream"
+        } else if (payload != null) {
+            headers["content-type"] = "application/json"
+        }
         val used = if (auth) deviceToken() else null
         if (used != null) headers["authorization"] = "Bearer $used"
 
         val response = try {
             withContext(io) {
-                transport.execute(HolloHttpRequest(method, apiUrl + path, headers, payload?.toString()))
+                transport.execute(HolloHttpRequest(method, apiUrl + path, headers, payload?.toString(), bytes))
             }
         } catch (e: IOException) {
             throw HolloException("network_error", "Couldn't reach Hollo. Check the connection.", 0, e)
@@ -90,7 +99,7 @@ internal class HolloClient(
         // The server forgot this device (e.g. its data was erased): register again.
         if (code == "invalid_device" && used != null && !retried) {
             forgetDevice(used)
-            return call(path, method, body, auth, retried = true)
+            return call(path, method, body, auth, retried = true, bytes = bytes, contentType = contentType)
         }
         throw HolloException(
             code,
@@ -137,10 +146,29 @@ internal class HolloClient(
         return parseMessagesResponse(call("/messages$query"))
     }
 
-    suspend fun send(body: String): HolloMessage {
-        val data = call("/messages", method = "POST", body = buildJsonObject { put("body", body) })
+    /** Sends a message. [photos] are paths from [uploadPhoto]; with photos the text is an optional caption. */
+    suspend fun send(body: String, photos: List<String> = emptyList()): HolloMessage {
+        val json = buildJsonObject {
+            if (body.isNotEmpty() || photos.isEmpty()) put("body", body)
+            if (photos.isNotEmpty()) putJsonArray("photos") { for (path in photos) add(path) }
+        }
+        val data = call("/messages", method = "POST", body = json)
         return data["message"]?.let { parseMessage(it) }
             ?: throw HolloException("invalid_response", "No message in the response.", 201)
+    }
+
+    /**
+     * Uploads one photo, already shrunk on the device, and returns its path
+     * for [send]. The server checks the bytes themselves.
+     */
+    suspend fun uploadPhoto(jpeg: ByteArray): String {
+        // The server would refuse it; don't spend the user's data finding out.
+        if (jpeg.size > PHOTO_MAX_BYTES) {
+            throw HolloException("photo_too_large", "Photos can be up to 4 MB.", 413)
+        }
+        val data = call("/photos", method = "POST", bytes = jpeg, contentType = "image/jpeg")
+        return (data["photo"] as? JsonObject)?.string("path")
+            ?: throw HolloException("invalid_response", "No photo path in the response.", 201)
     }
 
     /** Counts a link card tap; [opened] is false when nothing could open it. */

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hollo/src/client.dart';
@@ -151,6 +152,66 @@ void main() {
     expect(store.error, 'body is required.');
     expect(store.sending, isFalse);
     expect(store.messages, isEmpty);
+  });
+
+  test('uploads photos, then sends their paths in order', () async {
+    var uploads = 0;
+    final server = FakeServer({
+      'POST /devices': registered(),
+      'GET /messages': (_) => reply(200, {'messages': [], 'unread': 0}),
+      'POST /photos': (request) => reply(201, {
+            'photo': {'path': 'p${request.bodyBytes.first}-${uploads++}.jpg'},
+          }),
+      'POST /messages': (request) => reply(201, {
+            'message': {
+              ...message('9', 'end_user', ''),
+              'kind': 'image',
+              'photos': ['https://cdn.example/1.jpg'],
+            },
+          }),
+    });
+    final store = HolloStore();
+    addTearDown(store.close);
+    await store.start(clientFor(server));
+
+    await store.send(
+      '  ',
+      photos: [
+        Uint8List.fromList([1]),
+        Uint8List.fromList([2]),
+      ],
+    );
+
+    expect(server.to('POST', '/photos'), hasLength(2));
+    final sent =
+        jsonDecode(server.to('POST', '/messages').single.body) as Map;
+    expect(sent.containsKey('body'), isFalse, reason: 'no caption');
+    expect(
+      (sent['photos'] as List).map((p) => (p as String).substring(0, 2)),
+      ['p1', 'p2'],
+    );
+    expect(store.messages.single.photos, ['https://cdn.example/1.jpg']);
+  });
+
+  test('a failed upload sends nothing and rethrows', () async {
+    final server = FakeServer({
+      'POST /devices': registered(),
+      'GET /messages': (_) => reply(200, {'messages': [], 'unread': 0}),
+      'POST /photos': (_) => reply(415, {
+            'error': {'code': 'unsupported_photo', 'message': 'Not a photo'},
+          }),
+    });
+    final store = HolloStore();
+    addTearDown(store.close);
+    await store.start(clientFor(server));
+
+    await expectLater(
+      store.send('Look', photos: [Uint8List.fromList([1])]),
+      throwsA(isA<HolloError>()),
+    );
+    expect(store.error, 'Not a photo');
+    expect(store.sending, isFalse);
+    expect(server.to('POST', '/messages'), isEmpty);
   });
 
   test('after the first message, asks for push and saves the FCM token',

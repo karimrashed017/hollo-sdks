@@ -1,6 +1,6 @@
 {
   "name": "@hollo-so/react-native",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Hollo in-app support chat for React Native and Expo apps.",
   "license": "MIT",
   "main": "src/index.tsx",
@@ -15,8 +15,18 @@
   ],
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "*",
+    "expo-image-manipulator": "*",
+    "expo-image-picker": "*",
     "react": "*",
     "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo-image-manipulator": {
+      "optional": true
+    },
+    "expo-image-picker": {
+      "optional": true
+    }
   },
   "repository": {
     "type": "git",

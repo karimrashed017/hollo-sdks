@@ -11,21 +11,34 @@ import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// The profile photo is the only image the chat shows, so a tiny loader beats
-// adding an image library to every app that uses Hollo.
+// The chat shows the profile photo and the photos in messages, so a tiny
+// loader beats adding an image library to every app that uses Hollo.
 
-private val cache = LruCache<String, ImageBitmap>(8)
+// Counted in bytes, not images: one full-screen photo weighs as much as
+// hundreds of avatars.
+private val cache = object : LruCache<String, ImageBitmap>(
+    (Runtime.getRuntime().maxMemory() / 8).coerceAtMost(32L * 1024 * 1024).toInt(),
+) {
+    override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+}
 
+/**
+ * The image at [url], or null while it loads or if it can't. A [maxEdge]
+ * above 0 decodes it smaller (by powers of two), for thumbnails.
+ */
 @Composable
-internal fun rememberRemoteImage(url: String?): ImageBitmap? {
-    val image = produceState<ImageBitmap?>(initialValue = url?.let { cache.get(it) }, url) {
-        if (url == null || value != null) return@produceState
-        value = withContext(Dispatchers.IO) { download(url) }
+internal fun rememberRemoteImage(url: String?, maxEdge: Int = 0): ImageBitmap? {
+    val key = url?.let { "$it@$maxEdge" }
+    val image = produceState<ImageBitmap?>(initialValue = key?.let { cache.get(it) }, key) {
+        // produceState keeps the last value when the key changes, so look again.
+        value = key?.let { cache.get(it) }
+        if (url == null || key == null || value != null) return@produceState
+        value = withContext(Dispatchers.IO) { download(url, maxEdge) }?.also { cache.put(key, it) }
     }
     return image.value
 }
 
-private fun download(url: String): ImageBitmap? =
+private fun download(url: String, maxEdge: Int): ImageBitmap? =
     try {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
@@ -34,13 +47,26 @@ private fun download(url: String): ImageBitmap? =
             if (connection.responseCode != 200) {
                 null
             } else {
-                connection.inputStream.use { BitmapFactory.decodeStream(it) }
-                    ?.asImageBitmap()
-                    ?.also { cache.put(url, it) }
+                val bytes = connection.inputStream.use { it.readBytes() }
+                decodeSampled(bytes, maxEdge)?.asImageBitmap()
             }
         } finally {
             connection.disconnect()
         }
     } catch (e: Exception) {
         null
+    } catch (e: OutOfMemoryError) {
+        null
+    }
+
+private fun decodeSampled(bytes: ByteArray, maxEdge: Int) =
+    if (maxEdge <= 0) {
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } else {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxEdge)
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     }

@@ -79,6 +79,34 @@ final class DecodingTests: XCTestCase {
         XCTAssertTrue(response.branding)
     }
 
+    func testDecodesPhotoLinksLeniently() throws {
+        let response = try decode(MessagesResponse.self, """
+        {"messages": [
+          {"id": "m1", "sender": "end_user", "kind": "image", "body": "The error",
+           "payload": {"photos": ["ws/c/a.jpg", "ws/c/b.jpg"]},
+           "photos": ["https://storage.hollo.so/a.jpg?token=1", "https://storage.hollo.so/b.jpg?token=2"],
+           "created_at": "t1"},
+          {"id": "m2", "sender": "team", "kind": "image", "body": "",
+           "photos": ["http://example.com/x.jpg", 42, null, "https://storage.hollo.so/c.jpg"],
+           "created_at": "t2"},
+          {"id": "m3", "sender": "team", "kind": "image", "body": "", "photos": "nope", "created_at": "t3"},
+          {"id": "m4", "sender": "team", "kind": "text", "body": "Hi", "created_at": "t4"}
+        ]}
+        """)
+        XCTAssertEqual(response.messages.map(\.id), ["m1", "m2", "m3", "m4"])
+        XCTAssertEqual(response.messages[0].photos, [
+            URL(string: "https://storage.hollo.so/a.jpg?token=1")!,
+            URL(string: "https://storage.hollo.so/b.jpg?token=2")!,
+        ])
+        XCTAssertEqual(response.messages[0].body, "The error")
+        XCTAssertFalse(response.messages[0].isCard)
+        // Only the https string survives; a bad entry never drops the message.
+        XCTAssertEqual(response.messages[1].photos, [URL(string: "https://storage.hollo.so/c.jpg")!])
+        XCTAssertEqual(response.messages[2].photos, [])
+        // Older servers and text messages have no photos field.
+        XCTAssertEqual(response.messages[3].photos, [])
+    }
+
     func testProfileIgnoresEmptyFieldsAndNonHttpsPhotos() throws {
         let profile = try decode(HolloProfile.self, """
         {"name": "", "photo": "http://example.com/p.png", "welcome": "Ask away"}
@@ -158,5 +186,8 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(HolloStrings.forLanguage("zz").support, "Support")
         XCTAssertEqual(HolloStrings.forLanguage("ar").layoutDirection, .rightToLeft)
         XCTAssertEqual(HolloStrings.forLanguage("en").layoutDirection, .leftToRight)
+        XCTAssertEqual(HolloStrings.english.photoLabel(2, of: 3), "Photo 2 of 3")
+        XCTAssertEqual(HolloStrings.english.photoLabel(1, of: 1), "Photo")
+        XCTAssertEqual(HolloStrings.forLanguage("de").photoLabel(1, of: 2), "Foto 1 von 2")
     }
 }

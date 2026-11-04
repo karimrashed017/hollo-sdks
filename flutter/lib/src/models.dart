@@ -12,6 +12,7 @@ class HolloMessage {
     required this.body,
     required this.createdAt,
     this.payload = const <String, dynamic>{},
+    this.photos = const <String>[],
   });
 
   factory HolloMessage.fromJson(Map<String, dynamic> json) => HolloMessage(
@@ -21,6 +22,7 @@ class HolloMessage {
         body: readString(json['body']) ?? '',
         createdAt: readString(json['created_at']) ?? '',
         payload: readMap(json['payload']),
+        photos: _readPhotos(json['photos']),
       );
 
   final String id;
@@ -28,13 +30,18 @@ class HolloMessage {
   /// `end_user`, `team`, `ai` or `system`.
   final String sender;
 
-  /// `text`, `review_request`, `offer` or `link`.
+  /// `text`, `image`, `review_request`, `offer` or `link`.
   final String kind;
 
+  /// The text, or an image message's caption (often empty).
   final String body;
 
   /// Card details for review_request, offer and link messages.
   final Map<String, dynamic> payload;
+
+  /// An image message's photos as signed URLs, in order. They expire after
+  /// a day; the next start fetches fresh ones. Older servers send none.
+  final List<String> photos;
 
   /// Kept exactly as the server sent it, because polling sends it back as
   /// `after` and reformatting could drop the microseconds.
@@ -46,6 +53,16 @@ class HolloMessage {
   @override
   String toString() => 'HolloMessage($id, $sender, $kind)';
 }
+
+/// Web URLs only, so nothing else ever reaches Image.network. Plain http is
+/// kept for a local Supabase in development.
+List<String> _readPhotos(Object? value) => value is List
+    ? List<String>.unmodifiable(
+        value.whereType<String>().where(
+              (url) => url.startsWith('https://') || url.startsWith('http://'),
+            ),
+      )
+    : const <String>[];
 
 /// An offer card the user tapped. [ref] is the ID you set in the dashboard.
 @immutable

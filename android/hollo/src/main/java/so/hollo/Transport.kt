@@ -13,6 +13,8 @@ internal data class HolloHttpRequest(
     val url: String,
     val headers: Map<String, String>,
     val body: String?,
+    /** A raw upload (a photo), sent instead of [body]. */
+    val bytes: ByteArray? = null,
 )
 
 internal data class HolloHttpResponse(val status: Int, val body: String)
@@ -35,8 +37,8 @@ internal class HttpUrlConnectionTransport(
             connection.readTimeout = timeoutMs
             connection.useCaches = false
             for ((name, value) in request.headers) connection.setRequestProperty(name, value)
-            if (request.body != null) {
-                val bytes = request.body.toByteArray(Charsets.UTF_8)
+            val bytes = request.bytes ?: request.body?.toByteArray(Charsets.UTF_8)
+            if (bytes != null) {
                 connection.doOutput = true
                 connection.setFixedLengthStreamingMode(bytes.size)
                 connection.outputStream.use { it.write(bytes) }

@@ -29,7 +29,18 @@ struct HolloStrings: Equatable {
     var noThanks: String
     var continueLabel: String
     var notifyLine: String
+    var addPhotos: String
+    var removePhoto: String
+    var photo: String
+    var photoNumber: String
+    var closePhoto: String
+    var photoFailed: String
     var layoutDirection: LayoutDirection = .leftToRight
+
+    /** "Photo", or "Photo 2 of 3" when there are several, for VoiceOver. */
+    func photoLabel(_ number: Int, of total: Int) -> String {
+        total > 1 ? String(format: photoNumber, number, total) : photo
+    }
 
     /** For a code like "fr", "pt-BR" or nil (the device's language). */
     static func forLanguage(_ code: String?) -> HolloStrings {
@@ -66,7 +77,13 @@ struct HolloStrings: Equatable {
         pushRepliesOffers: "Turn on notifications to hear about replies and offers?",
         noThanks: "No thanks",
         continueLabel: "Continue",
-        notifyLine: "We'll send you a notification when we reply."
+        notifyLine: "We'll send you a notification when we reply.",
+        addPhotos: "Add photos",
+        removePhoto: "Remove photo",
+        photo: "Photo",
+        photoNumber: "Photo %1$d of %2$d",
+        closePhoto: "Close photo",
+        photoFailed: "Couldn't add that photo."
     )
 
     private static let table: [String: HolloStrings] = [
@@ -94,7 +111,13 @@ struct HolloStrings: Equatable {
             pushRepliesOffers: "¿Activar notificaciones para enterarte de respuestas y ofertas?",
             noThanks: "No, gracias",
             continueLabel: "Continuar",
-            notifyLine: "Te enviaremos una notificación cuando respondamos."
+            notifyLine: "Te enviaremos una notificación cuando respondamos.",
+            addPhotos: "Añadir fotos",
+            removePhoto: "Quitar foto",
+            photo: "Foto",
+            photoNumber: "Foto %1$d de %2$d",
+            closePhoto: "Cerrar foto",
+            photoFailed: "No se pudo añadir la foto."
         ),
         "fr": HolloStrings(
             support: "Assistance",
@@ -119,7 +142,13 @@ struct HolloStrings: Equatable {
             pushRepliesOffers: "Activer les notifications pour les réponses et les offres\u{00A0}?",
             noThanks: "Non merci",
             continueLabel: "Continuer",
-            notifyLine: "Nous vous enverrons une notification dès notre réponse."
+            notifyLine: "Nous vous enverrons une notification dès notre réponse.",
+            addPhotos: "Ajouter des photos",
+            removePhoto: "Retirer la photo",
+            photo: "Photo",
+            photoNumber: "Photo %1$d sur %2$d",
+            closePhoto: "Fermer la photo",
+            photoFailed: "Impossible d’ajouter cette photo."
         ),
         "de": HolloStrings(
             support: "Support",
@@ -144,7 +173,13 @@ struct HolloStrings: Equatable {
             pushRepliesOffers: "Mitteilungen für Antworten und Angebote aktivieren?",
             noThanks: "Nein danke",
             continueLabel: "Weiter",
-            notifyLine: "Wir benachrichtigen dich, sobald wir antworten."
+            notifyLine: "Wir benachrichtigen dich, sobald wir antworten.",
+            addPhotos: "Fotos hinzufügen",
+            removePhoto: "Foto entfernen",
+            photo: "Foto",
+            photoNumber: "Foto %1$d von %2$d",
+            closePhoto: "Foto schließen",
+            photoFailed: "Das Foto konnte nicht hinzugefügt werden."
         ),
         "pt": HolloStrings(
             support: "Suporte",
@@ -169,7 +204,13 @@ struct HolloStrings: Equatable {
             pushRepliesOffers: "Ativar notificações para respostas e ofertas?",
             noThanks: "Agora não",
             continueLabel: "Continuar",
-            notifyLine: "Enviaremos uma notificação quando respondermos."
+            notifyLine: "Enviaremos uma notificação quando respondermos.",
+            addPhotos: "Adicionar fotos",
+            removePhoto: "Remover foto",
+            photo: "Foto",
+            photoNumber: "Foto %1$d de %2$d",
+            closePhoto: "Fechar foto",
+            photoFailed: "Não foi possível adicionar a foto."
         ),
         "it": HolloStrings(
             support: "Assistenza",
@@ -194,7 +235,13 @@ struct HolloStrings: Equatable {
             pushRepliesOffers: "Attivare le notifiche per risposte e offerte?",
             noThanks: "No, grazie",
             continueLabel: "Continua",
-            notifyLine: "Ti invieremo una notifica quando rispondiamo."
+            notifyLine: "Ti invieremo una notifica quando rispondiamo.",
+            addPhotos: "Aggiungi foto",
+            removePhoto: "Rimuovi foto",
+            photo: "Foto",
+            photoNumber: "Foto %1$d di %2$d",
+            closePhoto: "Chiudi foto",
+            photoFailed: "Impossibile aggiungere la foto."
         ),
     ]
 }

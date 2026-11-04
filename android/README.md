@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.5")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.6")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and
@@ -64,6 +64,11 @@ Hollo.setSubscriber(true)
 val unread by Hollo.unreadCount.collectAsStateWithLifecycle()
 Hollo.theme = HolloTheme(light = HolloColors(accent = Color(0xFF0B0B0C)), title = "Help")
 ```
+
+Users can attach up to 5 photos to a message (the `+` beside the composer).
+It opens the system photo picker, so the app needs no storage permission.
+Photos are shrunk on the phone (long edge at most 1600 px, JPEG) before they
+upload, and tapping one in the chat opens it full screen with pinch-to-zoom.
 
 Colours, the light/dark look and the title set on the app's page in the
 dashboard arrive with `GET /messages` (`theme`) and go over `Hollo.theme`,

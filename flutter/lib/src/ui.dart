@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'dart:math' show pi;
+import 'dart:math' show min, pi;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'cards.dart';
+import 'client.dart' show holloMaxPhotos;
 import 'links.dart';
 import 'models.dart';
 import 'store.dart';
@@ -120,6 +122,10 @@ class _ChatTheme extends HolloTheme {
 /// Where the "Runs on Hollo" footer goes; ref counts taps from the chat.
 final Uri _brandingUrl = Uri.parse('https://hollo.so/?ref=chat');
 
+/// Lets the user choose up to `limit` photos, returned as JPEG bytes that
+/// are already resized and compressed. Empty when they cancel.
+typedef HolloPhotoPicker = Future<List<Uint8List>> Function(int limit);
+
 /// The chat screen itself, wired to a [HolloStore]. Apps use `HolloChat`.
 class HolloChatView extends StatefulWidget {
   const HolloChatView({
@@ -130,6 +136,7 @@ class HolloChatView extends StatefulWidget {
     required this.onOffer,
     required this.onLink,
     required this.openUrl,
+    required this.pickPhotos,
     this.onClose,
     this.dark = false,
   });
@@ -146,6 +153,9 @@ class HolloChatView extends StatefulWidget {
   final void Function(HolloMessage message) onLink;
   final Future<bool> Function(Uri uri) openUrl;
 
+  /// Behind the attach button. The real one is image_picker; tests fake it.
+  final HolloPhotoPicker pickPhotos;
+
   /// Shows a Done button when set (the presented chat).
   final VoidCallback? onClose;
 
@@ -155,6 +165,9 @@ class HolloChatView extends StatefulWidget {
 
 class _HolloChatViewState extends State<HolloChatView> {
   final TextEditingController _draft = TextEditingController();
+
+  /// Photos chosen for the next message, shown above the composer.
+  final List<Uint8List> _photos = <Uint8List>[];
   bool _shown = false;
 
   @override
@@ -178,14 +191,46 @@ class _HolloChatViewState extends State<HolloChatView> {
 
   Future<void> _send() async {
     final text = _draft.text;
-    if (text.trim().isEmpty || widget.store.sending) return;
+    final photos = List<Uint8List>.of(_photos);
+    if (text.trim().isEmpty && photos.isEmpty) return;
+    if (widget.store.sending) return;
     _draft.clear();
+    setState(_photos.clear);
     try {
-      await widget.store.send(text);
+      await widget.store.send(text, photos: photos);
     } catch (_) {
       // Put it back so the user can try again.
-      if (mounted && _draft.text.isEmpty) _draft.text = text;
+      if (!mounted) return;
+      if (_draft.text.isEmpty) _draft.text = text;
+      if (_photos.isEmpty) setState(() => _photos.addAll(photos));
     }
+  }
+
+  Future<void> _attach() async {
+    final room = holloMaxPhotos - _photos.length;
+    if (room <= 0 || widget.store.sending) return;
+    final List<Uint8List> picked;
+    try {
+      picked = await widget.pickPhotos(room);
+    } catch (_) {
+      // No access to the photo library, or the picker failed: nothing to add.
+      return;
+    }
+    if (!mounted || picked.isEmpty) return;
+    setState(() {
+      _photos.addAll(picked.take(holloMaxPhotos - _photos.length));
+    });
+  }
+
+  void _openPhotos(HolloMessage message, int index) {
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => _PhotoViewer(urls: message.photos, initial: index),
+        ),
+      ),
+    );
   }
 
   void _pressCard(HolloMessage message, HolloCard card) {
@@ -273,17 +318,24 @@ class _HolloChatViewState extends State<HolloChatView> {
         final card = HolloCard.fromMessage(message);
         return Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: card == null
-              ? _Bubble(
-                  message: message,
-                  theme: theme,
-                  teamName: store.profile.name,
-                )
-              : _CardView(
+          child: card != null
+              ? _CardView(
                   card: card,
                   theme: theme,
                   onPressed: () => _pressCard(message, card),
-                ),
+                )
+              : message.photos.isNotEmpty
+                  ? _PhotoMessage(
+                      message: message,
+                      theme: theme,
+                      teamName: store.profile.name,
+                      onOpen: (index) => _openPhotos(message, index),
+                    )
+                  : _Bubble(
+                      message: message,
+                      theme: theme,
+                      teamName: store.profile.name,
+                    ),
         );
       },
     );
@@ -355,74 +407,105 @@ class _HolloChatViewState extends State<HolloChatView> {
       borderRadius: const BorderRadius.all(Radius.circular(20)),
       borderSide: BorderSide(color: theme.bubble),
     );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _draft,
-              minLines: 1,
-              maxLines: 5,
-              maxLength: 4000,
-              keyboardType: TextInputType.multiline,
-              textCapitalization: TextCapitalization.sentences,
-              cursorColor: theme.accent,
-              style: TextStyle(color: theme.text, fontSize: 15),
-              decoration: InputDecoration(
-                hintText: 'Message',
-                hintStyle: TextStyle(color: theme.muted),
-                counterText: '',
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                enabledBorder: border,
-                focusedBorder: border.copyWith(
-                  borderSide: BorderSide(color: theme.muted),
-                ),
+    final canAttach = _photos.length < holloMaxPhotos && !store.sending;
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        SizedBox(
+          width: 40,
+          height: 40,
+          child: IconButton(
+            onPressed: canAttach ? () => unawaited(_attach()) : null,
+            padding: EdgeInsets.zero,
+            tooltip: 'Attach photos',
+            color: theme.text,
+            disabledColor: theme.muted,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 24),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: TextField(
+            controller: _draft,
+            minLines: 1,
+            maxLines: 5,
+            maxLength: 4000,
+            keyboardType: TextInputType.multiline,
+            textCapitalization: TextCapitalization.sentences,
+            cursorColor: theme.accent,
+            style: TextStyle(color: theme.text, fontSize: 15),
+            decoration: InputDecoration(
+              hintText: _photos.isEmpty ? 'Message' : 'Add a caption',
+              hintStyle: TextStyle(color: theme.muted),
+              counterText: '',
+              isDense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              enabledBorder: border,
+              focusedBorder: border.copyWith(
+                borderSide: BorderSide(color: theme.muted),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: _draft,
-            builder: (context, value, _) {
-              final enabled = value.text.trim().isNotEmpty && !store.sending;
-              return Opacity(
-                opacity: enabled || store.sending ? 1.0 : 0.35,
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: Material(
-                    color: theme.accent,
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: enabled ? _send : null,
-                      child: Center(
-                        child: store.sending
-                            ? SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: theme.onAccent,
-                                ),
-                              )
-                            : Icon(
-                                Icons.arrow_upward,
-                                size: 20,
+        ),
+        const SizedBox(width: 8),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _draft,
+          builder: (context, value, _) {
+            final enabled = (value.text.trim().isNotEmpty ||
+                    _photos.isNotEmpty) &&
+                !store.sending;
+            return Opacity(
+              opacity: enabled || store.sending ? 1.0 : 0.35,
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Material(
+                  color: theme.accent,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: enabled ? _send : null,
+                    child: Center(
+                      child: store.sending
+                          ? SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
                                 color: theme.onAccent,
-                                semanticLabel: 'Send message',
                               ),
-                      ),
+                            )
+                          : Icon(
+                              Icons.arrow_upward,
+                              size: 20,
+                              color: theme.onAccent,
+                              semanticLabel: 'Send message',
+                            ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_photos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _PhotoStrip(
+                photos: _photos,
+                theme: theme,
+                onRemove: (index) => setState(() => _photos.removeAt(index)),
+              ),
+            ),
+          row,
         ],
       ),
     );
@@ -622,6 +705,311 @@ class _Bubble extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The photos chosen for the next message, each with a remove button.
+class _PhotoStrip extends StatelessWidget {
+  const _PhotoStrip({
+    required this.photos,
+    required this.theme,
+    required this.onRemove,
+  });
+
+  final List<Uint8List> photos;
+  final _ChatTheme theme;
+  final void Function(int index) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 64.0;
+    return SizedBox(
+      height: size,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) => Stack(
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.all(Radius.circular(12)),
+              child: Image.memory(
+                photos[index],
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                // Decoded small: a full photo per thumbnail wastes memory.
+                cacheWidth: 192,
+                gaplessPlayback: true,
+                semanticLabel:
+                    'Photo ${index + 1} of ${photos.length} to send',
+              ),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Semantics(
+                label: 'Remove photo ${index + 1}',
+                button: true,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: () => onRemove(index),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: theme.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.close, size: 14, color: theme.onAccent),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// An image message: its photos in a grid, then the caption if it has one.
+class _PhotoMessage extends StatelessWidget {
+  const _PhotoMessage({
+    required this.message,
+    required this.theme,
+    required this.teamName,
+    required this.onOpen,
+  });
+
+  final HolloMessage message;
+  final _ChatTheme theme;
+  final String? teamName;
+  final void Function(int index) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = message.fromUser;
+    final photos = message.photos;
+    const gap = 4.0;
+    final width = min(MediaQuery.sizeOf(context).width * 0.7, 280.0);
+    // One photo fills the width; more go two to a row, as squares.
+    final tile = photos.length == 1 ? width : (width - gap) / 2;
+    return Column(
+      crossAxisAlignment:
+          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: width,
+          child: Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            alignment: mine ? WrapAlignment.end : WrapAlignment.start,
+            children: [
+              for (var i = 0; i < photos.length; i++)
+                Semantics(
+                  label: 'Photo ${i + 1} of ${photos.length}',
+                  hint: 'Opens full screen',
+                  button: true,
+                  image: true,
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: () => onOpen(i),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.all(Radius.circular(14)),
+                      child: Container(
+                        width: tile,
+                        height: photos.length == 1 ? width * 0.75 : tile,
+                        color: theme.bubble,
+                        child: Image.network(
+                          photos[i],
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.broken_image_outlined,
+                            color: theme.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (message.body.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: _Bubble(message: message, theme: theme, teamName: teamName),
+          ),
+      ],
+    );
+  }
+}
+
+/// Full screen on black: swipe between the message's photos, pinch or
+/// double-tap to zoom.
+class _PhotoViewer extends StatefulWidget {
+  const _PhotoViewer({required this.urls, required this.initial});
+
+  final List<String> urls;
+  final int initial;
+
+  @override
+  State<_PhotoViewer> createState() => _PhotoViewerState();
+}
+
+class _PhotoViewerState extends State<_PhotoViewer> {
+  late final PageController _pages =
+      PageController(initialPage: widget.initial);
+  late int _index = widget.initial;
+  bool _zoomed = false;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final urls = widget.urls;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pages,
+            // A zoomed photo pans instead of turning the page.
+            physics: _zoomed ? const NeverScrollableScrollPhysics() : null,
+            itemCount: urls.length,
+            onPageChanged: (index) => setState(() {
+              _index = index;
+              _zoomed = false;
+            }),
+            itemBuilder: (context, index) => _ZoomablePhoto(
+              url: urls[index],
+              label: 'Photo ${index + 1} of ${urls.length}',
+              onZoomChanged: (zoomed) {
+                if (zoomed != _zoomed) setState(() => _zoomed = zoomed);
+              },
+            ),
+          ),
+          SafeArea(
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Close photo',
+                  color: Colors.white,
+                  icon: const Icon(Icons.close),
+                ),
+                const Spacer(),
+                if (urls.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: Text(
+                      '${_index + 1} / ${urls.length}',
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ZoomablePhoto extends StatefulWidget {
+  const _ZoomablePhoto({
+    required this.url,
+    required this.label,
+    required this.onZoomChanged,
+  });
+
+  final String url;
+  final String label;
+  final void Function(bool zoomed) onZoomChanged;
+
+  @override
+  State<_ZoomablePhoto> createState() => _ZoomablePhotoState();
+}
+
+class _ZoomablePhotoState extends State<_ZoomablePhoto> {
+  final TransformationController _zoom = TransformationController();
+  Offset _tap = Offset.zero;
+  bool _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoom.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    final zoomed = _zoom.value.getMaxScaleOnAxis() > 1.01;
+    if (zoomed == _zoomed) return;
+    _zoomed = zoomed;
+    widget.onZoomChanged(zoomed);
+  }
+
+  /// Double tap zooms in on the spot tapped, or back out.
+  void _toggle() {
+    if (_zoomed) {
+      _zoom.value = Matrix4.identity();
+      return;
+    }
+    const scale = 2.5;
+    // Keeps the tapped point where it is: p * scale + t = p.
+    _zoom.value = Matrix4.diagonal3Values(scale, scale, 1)
+      ..setTranslationRaw(-_tap.dx * (scale - 1), -_tap.dy * (scale - 1), 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onDoubleTapDown: (details) => _tap = details.localPosition,
+      onDoubleTap: _toggle,
+      child: InteractiveViewer(
+        transformationController: _zoom,
+        minScale: 1,
+        maxScale: 5,
+        child: Center(
+          child: Image.network(
+            widget.url,
+            fit: BoxFit.contain,
+            semanticLabel: widget.label,
+            loadingBuilder: (context, child, progress) => progress == null
+                ? child
+                : const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+            errorBuilder: (_, __, ___) => const Icon(
+              Icons.broken_image_outlined,
+              color: Colors.white,
+              size: 48,
             ),
           ),
         ),
