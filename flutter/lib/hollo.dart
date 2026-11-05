@@ -18,5 +18,6 @@ export 'src/models.dart'
         HolloPermissionCard,
         HolloProfile,
         HolloPushSettings;
+export 'src/paywalls.dart' show HolloPaywall, HolloPaywallResult;
 export 'src/storage.dart' show HolloStorage, SharedPreferencesHolloStorage;
 export 'src/ui.dart' show HolloTheme;

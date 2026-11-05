@@ -212,6 +212,33 @@ export class HolloStore {
     void this.client?.linkTapped(messageId, opened).catch(() => {});
   }
 
+  /**
+   * Answers a confirm card. The card updates here straight away; the AI's
+   * reply arrives with the next poll. "gone" means it was already answered
+   * or expired.
+   */
+  async confirmAction(
+    messageId: string,
+    id: string,
+    decision: "confirm" | "cancel",
+  ): Promise<"ok" | "gone" | "error"> {
+    let status: string;
+    try {
+      ({ status } = await this.api.confirmAction(id, decision));
+    } catch (error) {
+      if ((error as { status?: number }).status !== 409) return "error";
+      status = "expired";
+    }
+    this.set({
+      messages: this.state.messages.map((m) =>
+        m.id === messageId
+          ? { ...m, payload: { ...(m.payload ?? {}), status } }
+          : m,
+      ),
+    });
+    return status === "expired" ? "gone" : "ok";
+  }
+
   async eraseUserData() {
     await this.api.eraseUserData();
     await this.reload();

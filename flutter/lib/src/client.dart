@@ -11,7 +11,7 @@ import 'storage.dart';
 // http.Client. Talks to the SDK API at https://hollo.so/api/v1 with the app
 // key and this install's device token.
 
-const String holloSdkVersion = '0.1.6';
+const String holloSdkVersion = '0.1.7';
 const String holloApiUrl = 'https://hollo.so/api/v1';
 
 /// The most photos one message can carry (F-17).
@@ -292,6 +292,17 @@ class HolloClient {
       '/links/tap',
       body: {'messageId': messageId, 'opened': opened},
     );
+  }
+
+  /// Answers an action confirm card. Returns `confirmed` or `cancelled`.
+  /// A card already answered or expired throws with status 409.
+  Future<String> confirmAction(String id, {required bool confirm}) async {
+    final data = await _call(
+      'POST',
+      '/confirmations',
+      body: {'id': id, 'decision': confirm ? 'confirm' : 'cancel'},
+    );
+    return readString(data['status']) ?? (confirm ? 'confirmed' : 'cancelled');
   }
 
   /// Reports an event (Hollo.track) or the subscription status. Returns

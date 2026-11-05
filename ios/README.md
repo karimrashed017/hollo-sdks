@@ -22,6 +22,7 @@ Hollo.handle(notification:)            // returns true if it was Hollo's
 Hollo.track("paywall_declined")        // automations; also Hollo.log(event:)
 Hollo.setSubscriber(true)
 Hollo.onOffer = { offer in … }         // offer cards
+Hollo.usePaywall(.storeKit())          // or let Hollo buy the product
 Hollo.onLink = { link in … }           // link cards that open your screens
 Hollo.theme = HolloTheme(accent: …)    // looks
 Hollo.language = "fr"                  // label language override
@@ -38,6 +39,13 @@ Hollo's AI only runs account actions for verified users.
 ```swift
 Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServer)
 ```
+
+Before the AI changes something, it sends an action card (`kind:
+"action_confirm"`): a title, a summary, each input as "label: value", and
+Confirm and Cancel buttons. A tap goes to `POST /api/v1/confirmations`;
+the card then shows "Confirmed", "Cancelled", "Expired" or "No longer
+available" instead of the buttons, and the AI's reply arrives with the next
+poll. Nothing to wire up in the app.
 
 Users can attach up to 5 photos per message from the button beside the
 composer, and tap any photo to see it full screen with pinch and double-tap
@@ -56,7 +64,7 @@ the photos as collected for app functionality.
 | `HolloClient.swift`  | HTTP client (an actor) with an injectable transport and storage     |
 | `Models.swift`       | Lenient Codable models for the API                                  |
 | `Links.swift`        | Review URLs, link-card actions, hex tokens, link detection          |
-| `HolloChat.swift`    | The SwiftUI chat                                                    |
+| `HolloChat.swift`    | The SwiftUI chat, its cards and the action confirm card             |
 | `PhotoViews.swift`   | Photo bubbles and the full-screen viewer                            |
 | `Photos.swift`       | On-device photo compression (ImageIO)                               |
 | `Presenter.swift`    | `HolloChatViewController` and the sheet `Hollo.present()` shows     |

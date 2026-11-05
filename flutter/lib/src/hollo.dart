@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'client.dart';
 import 'links.dart';
 import 'models.dart';
+import 'paywalls.dart';
 import 'storage.dart';
 import 'store.dart';
 import 'ui.dart';
@@ -43,6 +44,16 @@ abstract final class Hollo {
   /// Runs when the user taps an offer the team sent. Open your paywall or
   /// apply the discount for `offer.ref` here. The chat closes first.
   static void Function(HolloOffer offer)? onOffer;
+
+  /// Opens [paywall] when the user taps an offer card, after the chat
+  /// closes, and tracks how it ended (`offer_purchased`, `offer_declined`,
+  /// ...) so automations can follow up. Replaces [onOffer].
+  static void usePaywall(HolloPaywall paywall) {
+    onOffer = (offer) async {
+      final result = await runPaywall(paywall, offer.ref);
+      await track('offer_${result.name}');
+    };
+  }
 
   /// Runs when the user taps a link card that opens one of your screens.
   /// Navigate to `link.screen` here (with `link.value`, if it has one).

@@ -49,6 +49,28 @@ internal data class HolloMessage(
      * a day; the next launch fetches fresh ones. Older servers send none.
      */
     val photos: List<String> = emptyList(),
+    /** An action_confirm card's details, or null for other kinds (or a malformed card). */
+    val confirm: ActionConfirm? = null,
+)
+
+/** One "label: value" line on an action confirm card. */
+internal data class ActionInput(val label: String, val value: String)
+
+/**
+ * A change the AI wants to make, waiting for the user's Confirm or Cancel.
+ * [status] is "pending", "confirmed" or "cancelled" from the server, or
+ * [CONFIRM_UNAVAILABLE] once the server said it was already answered or expired.
+ */
+internal data class ActionConfirm(
+    val confirmationId: String,
+    val title: String,
+    val summary: String,
+    val inputs: List<ActionInput>,
+    /** "low", "medium" or "high". Not drawn differently yet: the look stays black and white. */
+    val risk: String,
+    val status: String,
+    /** ISO time, or null when the server sent none. */
+    val expiresAt: String?,
 )
 
 /** Who answers, set on the app's page in the dashboard. */
@@ -139,6 +161,34 @@ internal fun parseMessage(element: JsonElement): HolloMessage? {
         payload = payload,
         createdAt = o.string("created_at") ?: "",
         photos = parsePhotos(o["photos"]),
+        confirm = if (o.string("kind") == KIND_ACTION_CONFIRM) parseActionConfirm(o["payload"]) else null,
+    )
+}
+
+private val RISKS = setOf("low", "medium", "high")
+private val CONFIRM_STATUSES = setOf(CONFIRM_PENDING, CONFIRM_CONFIRMED, CONFIRM_CANCELLED)
+
+/** An action_confirm payload; null without a confirmation ID, so the message shows its body instead. */
+internal fun parseActionConfirm(element: JsonElement?): ActionConfirm? {
+    val o = element as? JsonObject ?: return null
+    val id = o.string("confirmationId")?.takeIf { it.isNotBlank() } ?: return null
+    val inputs = (o["inputs"] as? JsonArray)
+        ?.mapNotNull { item ->
+            val input = item as? JsonObject ?: return@mapNotNull null
+            val label = input.string("label")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            // Values are normally strings; numbers and booleans are shown as written.
+            val value = (input["value"] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
+            ActionInput(label, value)
+        }
+        ?: emptyList()
+    return ActionConfirm(
+        confirmationId = id,
+        title = o.string("title").orEmpty(),
+        summary = o.string("summary").orEmpty(),
+        inputs = inputs,
+        risk = o.string("risk")?.takeIf { it in RISKS } ?: "medium",
+        status = o.string("status")?.takeIf { it in CONFIRM_STATUSES } ?: CONFIRM_PENDING,
+        expiresAt = o.string("expiresAt")?.takeIf { it.isNotBlank() },
     )
 }
 

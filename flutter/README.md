@@ -12,7 +12,7 @@ dependencies:
     git:
       url: https://github.com/karimrashed017/hollo-sdks.git
       path: flutter
-      ref: 0.1.6
+      ref: 0.1.7
 ```
 
 It uses `http`, `shared_preferences` (to keep the device token), `url_launcher` (to open store pages and links) and `image_picker` (for photos). After adding it, stop the app and run `flutter run` again; a hot reload doesn't pick up new plugins.
@@ -50,6 +50,7 @@ If your app already has a navigator key, set `Hollo.navigatorKey = yourKey`, or 
 | `Hollo.eraseUserData()`                             | Deletes the user's support data. Throws if it fails.             |
 | `Hollo.unreadCount`                                 | `ValueListenable<int>` for a badge.                              |
 | `Hollo.onOffer = (offer) {}`                        | The user tapped an offer card. Open your paywall.                |
+| `Hollo.usePaywall((ref) async => ...)`              | Opens your paywall for an offer and tracks how it ended.         |
 | `Hollo.onLink = (link) {}`                          | The user tapped a link card for one of your screens.             |
 | `Hollo.track('paywall_declined')`                   | Reports an event for automations.                                |
 | `Hollo.setSubscriber(true)`                         | Whether the user pays.                                           |
@@ -60,7 +61,7 @@ If your app already has a navigator key, set `Hollo.navigatorKey = yourKey`, or 
 
 Colours, the look (light or dark) and the title set on the app's page in the dashboard go over `Hollo.theme` and `Hollo.darkTheme`, so they change without an app release. Anything the dashboard leaves unset keeps what you set in code.
 
-Pass an identity token signed by your server to mark the user as verified. Hollo's AI only runs account actions for verified users.
+Pass an identity token signed by your server to mark the user as verified. Hollo's AI only runs account actions for verified users. Before a change, the AI can show a confirm card with what it will do and Confirm and Cancel buttons; nothing runs until the user taps Confirm.
 
 ```dart
 await Hollo.identify(id: user.id, email: user.email, identityToken: tokenFromYourServer);

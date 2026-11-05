@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * with [present] or the [HolloChat] composable.
  */
 object Hollo {
-    internal const val SDK_VERSION = "0.1.6"
+    internal const val SDK_VERSION = "0.1.7"
     private const val TAG = "Hollo"
     private const val PREFS = "so.hollo"
     private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
@@ -150,6 +150,18 @@ object Hollo {
     @JvmStatic
     fun onOffer(handler: (HolloOffer) -> Unit) {
         offerHandler = handler
+    }
+
+    /**
+     * Opens [paywall] when the user taps an offer card, after the chat closes,
+     * and tracks how it ended (offer_purchased, offer_declined, ...) so
+     * automations can follow up. Replaces [onOffer].
+     */
+    @JvmStatic
+    fun usePaywall(paywall: HolloPaywall) {
+        offerHandler = { offer ->
+            runPaywall(paywall, offer.ref) { result -> track("offer_${result.value}") }
+        }
     }
 
     /**

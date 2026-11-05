@@ -315,29 +315,47 @@ class _HolloChatViewState extends State<HolloChatView> {
       itemBuilder: (context, index) {
         if (index == 0) return _pushFooter(store, theme);
         final message = messages[messages.length - index];
-        final card = HolloCard.fromMessage(message);
         return Padding(
           padding: const EdgeInsets.only(top: 8),
-          child: card != null
-              ? _CardView(
-                  card: card,
-                  theme: theme,
-                  onPressed: () => _pressCard(message, card),
-                )
-              : message.photos.isNotEmpty
-                  ? _PhotoMessage(
-                      message: message,
-                      theme: theme,
-                      teamName: store.profile.name,
-                      onOpen: (index) => _openPhotos(message, index),
-                    )
-                  : _Bubble(
-                      message: message,
-                      theme: theme,
-                      teamName: store.profile.name,
-                    ),
+          child: _messageItem(store, theme, message),
         );
       },
+    );
+  }
+
+  Widget _messageItem(
+    HolloStore store,
+    _ChatTheme theme,
+    HolloMessage message,
+  ) {
+    final confirmation = HolloConfirmation.fromMessage(message);
+    if (confirmation != null) {
+      return _ConfirmCardView(
+        confirmation: confirmation,
+        store: store,
+        theme: theme,
+      );
+    }
+    final card = HolloCard.fromMessage(message);
+    if (card != null) {
+      return _CardView(
+        card: card,
+        theme: theme,
+        onPressed: () => _pressCard(message, card),
+      );
+    }
+    if (message.photos.isNotEmpty) {
+      return _PhotoMessage(
+        message: message,
+        theme: theme,
+        teamName: store.profile.name,
+        onOpen: (index) => _openPhotos(message, index),
+      );
+    }
+    return _Bubble(
+      message: message,
+      theme: theme,
+      teamName: store.profile.name,
     );
   }
 
@@ -1062,6 +1080,102 @@ class _CardView extends StatelessWidget {
   }
 }
 
+/// An action the AI wants to run, with Confirm and Cancel (F-42). Once
+/// answered, expired or refused, a line says so instead of the buttons.
+class _ConfirmCardView extends StatelessWidget {
+  const _ConfirmCardView({
+    required this.confirmation,
+    required this.store,
+    required this.theme,
+  });
+
+  final HolloConfirmation confirmation;
+  final HolloStore store;
+  final _ChatTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final id = confirmation.id;
+    final state = store.confirmState(confirmation);
+    final busy = store.isDeciding(id);
+    final error = store.decideError(id);
+    void answer(bool confirm) =>
+        unawaited(store.answerConfirmation(id, confirm: confirm));
+
+    return _Bordered(
+      theme: theme,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              confirmation.title,
+              style: TextStyle(
+                color: theme.text,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (confirmation.summary.isNotEmpty)
+            Text(
+              confirmation.summary,
+              style: TextStyle(color: theme.muted, fontSize: 14, height: 1.4),
+            ),
+          for (final input in confirmation.inputs)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '${input.label}: ${input.value}',
+                style: TextStyle(color: theme.text, fontSize: 14),
+              ),
+            ),
+          const SizedBox(height: 14),
+          if (state == HolloConfirmState.pending)
+            Row(
+              children: [
+                Expanded(
+                  child: _PillButton(
+                    label: 'Cancel',
+                    theme: theme,
+                    filled: false,
+                    onPressed: busy ? null : () => answer(false),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _PillButton(
+                    label: 'Confirm',
+                    theme: theme,
+                    onPressed: busy ? null : () => answer(true),
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(
+              holloConfirmStateLabel(state),
+              style: TextStyle(
+                color: theme.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          if (error != null && state == HolloConfirmState.pending)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                error,
+                style: TextStyle(color: theme.muted, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Bordered extends StatelessWidget {
   const _Bordered({required this.theme, required this.child});
 
@@ -1092,36 +1206,44 @@ class _PillButton extends StatelessWidget {
 
   final String label;
   final _ChatTheme theme;
-  final VoidCallback onPressed;
+
+  /// Null turns the button off; it keeps its colours, faded.
+  final VoidCallback? onPressed;
   final bool filled;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 40,
-      child: filled
-          ? FilledButton(
-              onPressed: onPressed,
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: theme.onAccent,
-                shape: const StadiumBorder(),
+    return Opacity(
+      opacity: onPressed == null ? 0.5 : 1,
+      child: SizedBox(
+        width: double.infinity,
+        height: 40,
+        child: filled
+            ? FilledButton(
+                onPressed: onPressed,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.accent,
+                  foregroundColor: theme.onAccent,
+                  disabledBackgroundColor: theme.accent,
+                  disabledForegroundColor: theme.onAccent,
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              )
+            : OutlinedButton(
+                onPressed: onPressed,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.text,
+                  disabledForegroundColor: theme.text,
+                  side: BorderSide(color: theme.bubble),
+                  shape: const StadiumBorder(),
+                ),
+                child: Text(label),
               ),
-              child: Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            )
-          : OutlinedButton(
-              onPressed: onPressed,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.text,
-                side: BorderSide(color: theme.bubble),
-                shape: const StadiumBorder(),
-              ),
-              child: Text(label),
-            ),
+      ),
     );
   }
 }

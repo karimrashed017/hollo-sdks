@@ -21,6 +21,58 @@ export type HolloMessage = {
 /** Photos per message, as the server allows. */
 export const MAX_PHOTOS = 5;
 
+/** An action_confirm card: what will change, before the user says yes. */
+export type HolloConfirmation = {
+  id: string;
+  title: string;
+  summary: string;
+  inputs: { label: string; value: string }[];
+  state: "pending" | "confirmed" | "cancelled" | "expired";
+};
+
+/** Reads an action_confirm message, tolerating missing fields. */
+export function readConfirmation(
+  message: Pick<HolloMessage, "kind" | "payload" | "body">,
+  now = Date.now(),
+): HolloConfirmation | null {
+  if (message.kind !== "action_confirm") return null;
+  const p = message.payload ?? {};
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const id = str(p.confirmationId);
+  if (!id) return null;
+  const inputs = Array.isArray(p.inputs)
+    ? p.inputs.flatMap((i) =>
+        i &&
+        typeof i === "object" &&
+        typeof (i as { label?: unknown }).label === "string"
+          ? [
+              {
+                label: (i as { label: string }).label,
+                value: String((i as { value?: unknown }).value ?? ""),
+              },
+            ]
+          : [],
+      )
+    : [];
+  const status = str(p.status);
+  const expires = Date.parse(str(p.expiresAt));
+  const state =
+    status === "confirmed" || status === "used"
+      ? "confirmed"
+      : status === "cancelled"
+        ? "cancelled"
+        : status === "expired" || (!Number.isNaN(expires) && expires < now)
+          ? "expired"
+          : "pending";
+  return {
+    id,
+    title: str(p.title) || "Confirm",
+    summary: str(p.summary) || message.body,
+    inputs,
+    state,
+  };
+}
+
 /** An offer card the user tapped; ref is the ID you set in the dashboard. */
 export type HolloOffer = { ref: string; title: string };
 
@@ -266,6 +318,14 @@ export class HolloClient {
 
   markRead() {
     return this.call<{ unread: number }>("/read", { method: "POST" });
+  }
+
+  /** Answers an action's confirm card; the change runs on the server. */
+  confirmAction(id: string, decision: "confirm" | "cancel") {
+    return this.call<{ status: "confirmed" | "cancelled" }>("/confirmations", {
+      method: "POST",
+      body: { id, decision },
+    });
   }
 
   async eraseUserData() {

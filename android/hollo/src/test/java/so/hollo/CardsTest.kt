@@ -123,3 +123,93 @@ class CardContentTest {
         assertNull(cardContent(message("text", "Hello"), "en"))
     }
 }
+
+class ActionConfirmTest {
+    private val full = """
+        {"id":"m5","sender":"ai","kind":"action_confirm","body":"Restore your streak to 41 days?","created_at":"t",
+         "payload":{"confirmationId":"0b6f9a8e-1c2d-4e5f-8a9b-0c1d2e3f4a5b","title":"Restore lost streak",
+           "summary":"Restore your streak to 41 days","inputs":[{"label":"Streak days","value":"41"}],
+           "risk":"low","status":"pending","expiresAt":"2026-11-05T12:00:00.000Z"}}
+    """.trimIndent()
+
+    @Test
+    fun parsesAFullCard() {
+        val message = parseMessage(parseObject(full))!!
+        assertEquals(KIND_ACTION_CONFIRM, message.kind)
+        assertEquals("Restore your streak to 41 days?", message.body)
+        assertEquals(
+            ActionConfirm(
+                confirmationId = "0b6f9a8e-1c2d-4e5f-8a9b-0c1d2e3f4a5b",
+                title = "Restore lost streak",
+                summary = "Restore your streak to 41 days",
+                inputs = listOf(ActionInput("Streak days", "41")),
+                risk = "low",
+                status = CONFIRM_PENDING,
+                expiresAt = "2026-11-05T12:00:00.000Z",
+            ),
+            message.confirm,
+        )
+        assertEquals(listOf("Streak days: 41"), confirmLines(message.confirm!!))
+        assertFalse("Not a one-button card", isCard(message.kind))
+    }
+
+    @Test
+    fun toleratesMissingAndOddFields() {
+        val confirm = parseActionConfirm(
+            parseObject(
+                """
+                    {"confirmationId":"c1","title":7,"inputs":[{"label":"Days","value":41},{"value":"no label"},
+                     "junk",{"label":"Note","value":null}],"risk":"extreme","status":"weird"}
+                """.trimIndent(),
+            ),
+        )!!
+        assertEquals("", confirm.title)
+        assertEquals("", confirm.summary)
+        assertEquals(listOf(ActionInput("Days", "41"), ActionInput("Note", "")), confirm.inputs)
+        assertEquals(listOf("Days: 41", "Note"), confirmLines(confirm))
+        assertEquals("medium", confirm.risk)
+        assertEquals(CONFIRM_PENDING, confirm.status)
+        assertNull(confirm.expiresAt)
+
+        assertEquals(emptyList<ActionInput>(), parseActionConfirm(parseObject("""{"confirmationId":"c1","inputs":"x"}"""))!!.inputs)
+    }
+
+    @Test
+    fun aCardWithoutAnIdFallsBackToItsText() {
+        val message = parseMessage(
+            parseObject("""{"id":"m6","sender":"ai","kind":"action_confirm","body":"Restore your streak?","payload":{"title":"x"}}"""),
+        )!!
+        assertNull(message.confirm)
+        assertEquals("Restore your streak?", message.body)
+        assertNull(parseMessage(parseObject("""{"id":"m7","kind":"action_confirm","payload":null}"""))!!.confirm)
+        assertNull(parseActionConfirm(null))
+        // Other kinds never carry one, even with a look-alike payload.
+        assertNull(parseMessage(parseObject("""{"id":"m8","kind":"offer","payload":{"confirmationId":"c1"}}"""))!!.confirm)
+    }
+
+    @Test
+    fun showsTheRightState() {
+        val card = parseActionConfirm(parseObject("""{"confirmationId":"c1","expiresAt":"2026-11-05T12:00:00Z"}"""))!!
+        val expiry = parseIsoMillis("2026-11-05T12:00:00Z")!!
+        assertEquals(ConfirmState.PENDING, confirmState(card, expiry - 1))
+        assertEquals(ConfirmState.EXPIRED, confirmState(card, expiry))
+        assertEquals(ConfirmState.CONFIRMED, confirmState(card.copy(status = CONFIRM_CONFIRMED), expiry + 1))
+        assertEquals(ConfirmState.CANCELLED, confirmState(card.copy(status = CONFIRM_CANCELLED), 0))
+        assertEquals("No longer available", confirmState(card.copy(status = CONFIRM_UNAVAILABLE), 0).label)
+        assertEquals("Expired", ConfirmState.EXPIRED.label)
+        // No time, or one we can't read, leaves the buttons; the server still checks.
+        assertEquals(ConfirmState.PENDING, confirmState(card.copy(expiresAt = null), Long.MAX_VALUE))
+        assertEquals(ConfirmState.PENDING, confirmState(card.copy(expiresAt = "soon"), Long.MAX_VALUE))
+    }
+
+    @Test
+    fun readsIsoTimes() {
+        assertEquals(1_793_877_600_000L, parseIsoMillis("2026-11-05T11:20:00Z"))
+        assertEquals(1_793_877_600_123L, parseIsoMillis("2026-11-05T11:20:00.123456+00:00"))
+        assertEquals(1_793_877_600_000L, parseIsoMillis("2026-11-05T13:20:00+02:00"))
+        assertEquals(1_793_877_600_000L, parseIsoMillis("2026-11-05T06:20:00-0500"))
+        assertEquals(1_793_877_600_500L, parseIsoMillis("2026-11-05 11:20:00.5"))
+        assertNull(parseIsoMillis("tomorrow"))
+        assertNull(parseIsoMillis(""))
+    }
+}

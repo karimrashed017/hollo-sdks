@@ -211,10 +211,16 @@ struct MessageList: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(store.messages) { message in
-                        MessageRow(
-                            message: message, profileName: store.profile.name, style: style, strings: strings,
-                            openPhoto: { viewing = PhotoViewing(photos: message.photos, index: $0) }
-                        )
+                        Group {
+                            if message.isActionConfirm {
+                                ActionConfirmCard(message: message, store: store, style: style, strings: strings)
+                            } else {
+                                MessageRow(
+                                    message: message, profileName: store.profile.name, style: style, strings: strings,
+                                    openPhoto: { viewing = PhotoViewing(photos: message.photos, index: $0) }
+                                )
+                            }
+                        }
                         .id(message.id)
                     }
                     ForEach(store.outbox) { item in
@@ -435,6 +441,7 @@ struct FilledButton: View {
     let style: ChatStyle
     let action: () -> Void
     @Environment(\.self) private var environment
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         Button(action: action) {
@@ -445,6 +452,118 @@ struct FilledButton: View {
                 .background(style.accent, in: Capsule())
         }
         .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.35)
+    }
+}
+
+/** The secondary button beside a FilledButton: an outline, no fill. */
+struct OutlineButton: View {
+    let title: String
+    let style: ChatStyle
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .foregroundStyle(style.text)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .overlay(Capsule().strokeBorder(style.teamBubble, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.35)
+    }
+}
+
+/**
+ * The AI asking before it changes something (F-42): what will change, then
+ * Confirm or Cancel. Once answered, or past its time, it shows the outcome
+ * instead. The AI's reply arrives with the normal poll.
+ */
+struct ActionConfirmCard: View {
+    let message: HolloMessage
+    let store: HolloStore
+    let style: ChatStyle
+    let strings: HolloStrings
+
+    var body: some View {
+        let card = ActionConfirm(message.payload)
+        let progress = store.confirmations[message.id]
+        // Redrawn every minute, so a card left open turns to "Expired" on time.
+        TimelineView(.everyMinute) { _ in
+            content(card, progress: progress, state: card.state(progress: progress, now: Date()))
+        }
+    }
+
+    private func content(
+        _ card: ActionConfirm, progress: ConfirmationProgress?, state: ActionConfirm.State
+    ) -> some View {
+        // An older server, or a card with nothing filled in, still says something.
+        let title = card.title.isEmpty && card.summary.isEmpty ? message.body : card.title
+        return VStack(alignment: .leading, spacing: 6) {
+            if !title.isEmpty {
+                Text(title).font(.headline).foregroundStyle(style.text)
+            }
+            if !card.summary.isEmpty {
+                Text(card.summary).font(.subheadline).foregroundStyle(style.muted)
+            }
+            if !card.inputs.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(card.inputs.enumerated()), id: \.offset) { _, input in
+                        Text(verbatim: Self.line(input))
+                            .font(.subheadline)
+                            .foregroundStyle(style.text)
+                    }
+                }
+                .padding(.top, 2)
+            }
+            if state == .pending {
+                let sending = progress == .sending
+                HStack(spacing: 8) {
+                    OutlineButton(title: strings.cancel, style: style) {
+                        _ = store.answerConfirmation(message, confirm: false)
+                    }
+                    FilledButton(title: strings.confirm, style: style) {
+                        _ = store.answerConfirmation(message, confirm: true)
+                    }
+                }
+                .disabled(sending)
+                .padding(.top, 8)
+                if progress == .failed {
+                    Text(strings.confirmFailed)
+                        .font(.caption)
+                        .foregroundStyle(style.muted)
+                }
+            } else {
+                Text(label(state))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(style.muted)
+                    .padding(.top, 8)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(style.teamBubble, lineWidth: 1)
+        )
+    }
+
+    /** "Streak days: 41"; just the label or value when the other is missing. */
+    static func line(_ input: ActionConfirm.Input) -> String {
+        if input.label.isEmpty { return input.value }
+        if input.value.isEmpty { return input.label }
+        return "\(input.label): \(input.value)"
+    }
+
+    private func label(_ state: ActionConfirm.State) -> String {
+        switch state {
+        case .confirmed: return strings.confirmed
+        case .cancelled: return strings.cancelled
+        case .expired: return strings.expired
+        case .unavailable, .pending: return strings.noLongerAvailable
+        }
     }
 }
 

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { HolloClient, HolloError, type Storage } from "./client";
+import {
+  HolloClient,
+  HolloError,
+  readConfirmation,
+  type Storage,
+} from "./client";
 
 function memoryStorage(): Storage & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -231,5 +236,75 @@ describe("HolloClient", () => {
       photos: ["ws/conv/abc.jpg"],
     });
     expect(message.photos).toEqual(["https://x/abc.jpg"]);
+  });
+});
+
+describe("confirm cards", () => {
+  const message = (payload: Record<string, unknown>) => ({
+    kind: "action_confirm",
+    body: "Restore your streak to 41 days",
+    payload,
+  });
+
+  it("reads a pending card", () => {
+    const card = readConfirmation(
+      message({
+        confirmationId: "c1",
+        title: "Restore lost streak",
+        summary: "Restore your streak to 41 days",
+        inputs: [{ label: "Streak days", value: "41" }, { nope: 1 }],
+        status: "pending",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+    expect(card).toEqual({
+      id: "c1",
+      title: "Restore lost streak",
+      summary: "Restore your streak to 41 days",
+      inputs: [{ label: "Streak days", value: "41" }],
+      state: "pending",
+    });
+  });
+
+  it("shows answered and expired cards without buttons", () => {
+    expect(
+      readConfirmation(message({ confirmationId: "c", status: "confirmed" }))
+        ?.state,
+    ).toBe("confirmed");
+    expect(
+      readConfirmation(message({ confirmationId: "c", status: "cancelled" }))
+        ?.state,
+    ).toBe("cancelled");
+    expect(
+      readConfirmation(
+        message({
+          confirmationId: "c",
+          status: "pending",
+          expiresAt: "2020-01-01T00:00:00Z",
+        }),
+      )?.state,
+    ).toBe("expired");
+  });
+
+  it("ignores other kinds and cards without an id", () => {
+    expect(readConfirmation({ kind: "text", body: "hi" })).toBeNull();
+    expect(readConfirmation(message({}))).toBeNull();
+  });
+
+  it("posts the answer", async () => {
+    const storage = memoryStorage();
+    await storage.setItem(`hollo.deviceToken.${APP_KEY}`, "dev_1");
+    const server = fakeServer({
+      "POST /confirmations": () => [200, { status: "confirmed" }],
+    });
+    const result = await client(storage, server.fetch).confirmAction(
+      "c1",
+      "confirm",
+    );
+    expect(result.status).toBe("confirmed");
+    expect(JSON.parse(String(server.calls[0].init.body))).toEqual({
+      id: "c1",
+      decision: "confirm",
+    });
   });
 });

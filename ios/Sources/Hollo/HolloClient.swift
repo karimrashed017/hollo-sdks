@@ -304,6 +304,20 @@ actor HolloClient {
         )
     }
 
+    /**
+     * Answers an action card. Returns the new status ("confirmed" or
+     * "cancelled"); a 409 means it was already answered or has expired.
+     */
+    func decideConfirmation(id: String, confirm: Bool) async throws -> String {
+        struct Decided: Decodable { let status: String? }
+        let decision = confirm ? "confirm" : "cancel"
+        let result: Decided = try await call(
+            "/confirmations", method: "POST",
+            body: .object(["id": .string(id), "decision": .string(decision)])
+        )
+        return result.status ?? (confirm ? "confirmed" : "cancelled")
+    }
+
     /** Reports an event or the subscription status. True: open the chat now. */
     func event(name: String? = nil, subscriber: Bool? = nil) async throws -> Bool {
         struct Result: Decodable { let open: Bool? }

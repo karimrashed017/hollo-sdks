@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7
+
+- Paywall adapters: `Hollo.usePaywall(paywall)` opens your paywall for an offer card's ID after the chat closes, and tracks how it ended as `offer_purchased`, `offer_restored`, `offer_declined`, `offer_pending` or `offer_failed`. RevenueCat and Superwall examples are in the docs.
+- Action confirm cards (`action_confirm`): before the AI runs an account action it can show what will change, with Confirm and Cancel. The answer goes to `POST /confirmations`, and the card then shows Confirmed, Cancelled, Expired or "No longer available". The AI's reply arrives with the next poll.
+
 ## 0.1.6
 
 - Photo attachments: an attach button beside the composer lets users send up to 5 photos, with an optional caption. They're resized and compressed on the device through `image_picker`, which needs `NSPhotoLibraryUsageDescription` in the iOS app's `Info.plist`.

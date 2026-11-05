@@ -394,6 +394,36 @@ class HolloClientTest {
     }
 
     @Test
+    fun answersAnActionConfirmCard() = runTest {
+        val storage = MemoryStorage()
+        storage.data[TOKEN_KEY] = "hdt_saved"
+        var reply = 200 to """{"status":"confirmed"}"""
+        val server = FakeServer(mapOf("POST /confirmations" to { _: HolloHttpRequest -> reply }))
+        val api = client(storage, server)
+
+        assertEquals(CONFIRM_CONFIRMED, api.answerConfirmation("c1", confirm = true))
+        val sent = server.requests.last()
+        assertEquals("https://hollo.so/api/v1/confirmations", sent.url)
+        assertEquals("POST", sent.method)
+        assertEquals(APP_KEY, sent.headers["x-hollo-app-key"])
+        assertEquals("Bearer hdt_saved", sent.headers["authorization"])
+        assertEquals("application/json", sent.headers["content-type"])
+        val body = bodyOf(sent)
+        assertEquals(JsonPrimitive("c1"), body["id"])
+        assertEquals(JsonPrimitive("confirm"), body["decision"])
+
+        // A status we don't know falls back to what was tapped.
+        reply = 200 to """{"status":"done"}"""
+        assertEquals(CONFIRM_CANCELLED, api.answerConfirmation("c1", confirm = false))
+        assertEquals(JsonPrimitive("cancel"), bodyOf(server.requests.last())["decision"])
+
+        reply = 409 to """{"error":{"code":"not_pending","message":"This card was already answered or has expired."}}"""
+        val gone = expectHollo { api.answerConfirmation("c1", confirm = true) }
+        assertEquals(409, gone.status)
+        assertEquals("not_pending", gone.code)
+    }
+
+    @Test
     fun uploadsAPhotoAsRawJpegBytes() = runTest {
         val storage = MemoryStorage()
         storage.data[TOKEN_KEY] = "hdt_saved"

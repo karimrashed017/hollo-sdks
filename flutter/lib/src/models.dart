@@ -30,13 +30,14 @@ class HolloMessage {
   /// `end_user`, `team`, `ai` or `system`.
   final String sender;
 
-  /// `text`, `image`, `review_request`, `offer` or `link`.
+  /// `text`, `image`, `review_request`, `offer`, `link` or `action_confirm`.
   final String kind;
 
   /// The text, or an image message's caption (often empty).
   final String body;
 
-  /// Card details for review_request, offer and link messages.
+  /// Card details for review_request, offer, link and action_confirm
+  /// messages.
   final Map<String, dynamic> payload;
 
   /// An image message's photos as signed URLs, in order. They expire after

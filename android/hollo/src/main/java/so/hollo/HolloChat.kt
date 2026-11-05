@@ -52,6 +52,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -95,6 +96,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 // The native chat screen. Black and white by default, following light and
 // dark mode; set Hollo.theme to match the host app.
@@ -162,7 +164,17 @@ internal fun HolloChatScreen(theme: HolloTheme, onClose: (() -> Unit)?, modifier
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.messages, key = { it.id }) { message ->
-                        if (isCard(message.kind)) {
+                        val confirm = message.confirm
+                        if (confirm != null) {
+                            ConfirmCardView(
+                                confirm = confirm,
+                                busy = message.id in state.confirming,
+                                error = state.confirmErrors[message.id],
+                                colors = colors,
+                                font = font,
+                                onAnswer = { yes -> store.answerConfirmation(message.id, yes) },
+                            )
+                        } else if (isCard(message.kind)) {
                             CardView(
                                 message = message,
                                 language = language,
@@ -797,6 +809,101 @@ private fun CardView(
 }
 
 /**
+ * An action the AI wants to run, with Confirm and Cancel (F-42). Once
+ * answered, expired or gone, the buttons give way to a line saying so.
+ */
+@Composable
+private fun ConfirmCardView(
+    confirm: ActionConfirm,
+    busy: Boolean,
+    error: String?,
+    colors: ResolvedColors,
+    font: FontFamily?,
+    onAnswer: (confirm: Boolean) -> Unit,
+) {
+    // Ticks once at the expiry time, so a card left open on screen turns to "Expired".
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val expires = remember(confirm.expiresAt) { confirm.expiresAt?.let { parseIsoMillis(it) } }
+    LaunchedEffect(expires) {
+        if (expires != null && expires > now) {
+            delay(expires - now + 500)
+            now = System.currentTimeMillis()
+        }
+    }
+    val stateNow = confirmState(confirm, now)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border, RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (confirm.title.isNotEmpty()) {
+            BasicText(
+                text = confirm.title,
+                style = TextStyle(color = colors.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = font),
+            )
+        }
+        if (confirm.summary.isNotEmpty()) {
+            BasicText(
+                text = confirm.summary,
+                style = TextStyle(color = colors.muted, fontSize = 14.sp, lineHeight = 20.sp, fontFamily = font),
+            )
+        }
+        for (line in confirmLines(confirm)) {
+            BasicText(
+                text = line,
+                style = TextStyle(color = colors.text, fontSize = 14.sp, lineHeight = 20.sp, fontFamily = font),
+            )
+        }
+        if (stateNow == ConfirmState.PENDING) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Pill(
+                    label = "Cancel",
+                    filled = false,
+                    colors = colors,
+                    font = font,
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = { onAnswer(false) },
+                )
+                Pill(
+                    label = "Confirm",
+                    filled = true,
+                    colors = colors,
+                    font = font,
+                    modifier = Modifier.weight(1f),
+                    enabled = !busy,
+                    onClick = { onAnswer(true) },
+                )
+            }
+            if (error != null) {
+                BasicText(
+                    text = error,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = TextStyle(color = colors.muted, fontSize = 12.sp, textAlign = TextAlign.Center, fontFamily = font),
+                )
+            }
+        } else {
+            BasicText(
+                text = stateNow.label,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                style = TextStyle(
+                    color = colors.muted,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    fontFamily = font,
+                ),
+            )
+        }
+    }
+}
+
+/**
  * Under the user's latest message: the card asking to turn on notifications
  * (F-40), or a line saying they'll be notified of the reply (F-16).
  */
@@ -867,6 +974,7 @@ private fun Pill(
     colors: ResolvedColors,
     font: FontFamily?,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(20.dp)
@@ -874,9 +982,11 @@ private fun Pill(
     Box(
         modifier = modifier
             .height(40.dp)
+            // Dimmed while off, like the send button.
+            .alpha(if (enabled) 1f else 0.35f)
             .clip(shape)
             .then(surface)
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         BasicText(

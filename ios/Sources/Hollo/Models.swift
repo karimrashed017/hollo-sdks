@@ -91,10 +91,10 @@ struct HolloMessage: Decodable, Identifiable, Hashable, Sendable {
 
     let id: String
     let sender: Sender
-    /** "text", "image", "review_request", "offer", "link", or something newer. */
+    /** "text", "image", "review_request", "offer", "link", "action_confirm", or something newer. */
     let kind: String
     let body: String
-    /** Card details for review_request, offer and link messages. */
+    /** Card details for review_request, offer, link and action_confirm messages. */
     let payload: Payload
     /**
      * Signed links to an image message's photos, in order (F-17). They
@@ -141,6 +141,110 @@ struct HolloMessage: Decodable, Identifiable, Hashable, Sendable {
 
     var isCard: Bool {
         kind == "review_request" || kind == "offer" || kind == "link"
+    }
+
+    /** The AI asking before it changes something (F-42); drawn by its own card. */
+    var isActionConfirm: Bool { kind == "action_confirm" }
+}
+
+/**
+ * An action_confirm card's details: what the AI will change once the user
+ * taps Confirm. Built from the payload leniently, so a missing or odd field
+ * shows less, never breaks the chat.
+ */
+struct ActionConfirm: Hashable, Sendable {
+    struct Input: Hashable, Sendable {
+        let label: String
+        let value: String
+    }
+
+    /** What the card shows instead of its buttons, once it's answered. */
+    enum State: Hashable, Sendable {
+        case pending
+        case confirmed
+        case cancelled
+        case expired
+        /** The server said it was already answered or has expired (409). */
+        case unavailable
+    }
+
+    let confirmationId: String
+    let title: String
+    let summary: String
+    let inputs: [Input]
+    /** "low", "medium" or "high"; "" when missing. */
+    let risk: String
+    /** "pending", "confirmed", "cancelled", or "" when missing. */
+    let status: String
+    let expiresAt: Date?
+
+    init(_ payload: Payload) {
+        confirmationId = payload.text("confirmationId")
+        title = payload.text("title")
+        summary = payload.text("summary")
+        risk = payload.text("risk")
+        status = payload.text("status")
+        expiresAt = Self.date(payload.text("expiresAt"))
+        if case .array(let items)? = payload["inputs"] {
+            inputs = items.compactMap { item in
+                guard case .object(let fields) = item else { return nil }
+                let label = fields.text("label")
+                let value = fields["value"].map(Self.display) ?? ""
+                return label.isEmpty && value.isEmpty ? nil : Input(label: label, value: value)
+            }
+        } else {
+            inputs = []
+        }
+    }
+
+    /** The state from the server's payload alone, at a given time. */
+    func state(now: Date = Date()) -> State {
+        switch status {
+        case "confirmed": return .confirmed
+        case "cancelled": return .cancelled
+        case "pending", "":
+            if let expiresAt, expiresAt <= now { return .expired }
+            // Without an ID there's nothing to answer.
+            return confirmationId.isEmpty ? .unavailable : .pending
+        default:
+            // A status newer than this SDK: don't offer buttons for it.
+            return .unavailable
+        }
+    }
+
+    /** What to show, given what the user did with the card on this device. */
+    func state(progress: ConfirmationProgress?, now: Date = Date()) -> State {
+        switch progress {
+        case .done(let answered)?: return answered
+        // Keep the (disabled) buttons while waiting: the server decides.
+        case .sending?: return .pending
+        case .failed?, nil: return state(now: now)
+        }
+    }
+
+    /** "41", not "41.0"; true as "true". */
+    private static func display(_ value: JSONValue) -> String {
+        switch value {
+        case .string(let text): return text
+        case .number(let number):
+            if number.rounded() == number, abs(number) < 1e15 { return String(Int64(number)) }
+            return String(number)
+        case .bool(let flag): return flag ? "true" : "false"
+        default: return ""
+        }
+    }
+
+    /** ISO 8601, with or without fractional seconds; nil if unreadable. */
+    static func date(_ text: String) -> Date? {
+        guard !text.isEmpty else { return nil }
+        let precise = ISO8601DateFormatter()
+        precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = precise.date(from: text) { return date }
+        let plain = ISO8601DateFormatter()
+        if let date = plain.date(from: text) { return date }
+        // Postgres sends microseconds, which the formatter may not read: drop them.
+        let trimmed = text.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
+        return plain.date(from: trimmed)
     }
 }
 

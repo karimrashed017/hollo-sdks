@@ -44,6 +44,10 @@ internal data class HolloState(
     val pushRegistered: Boolean = false,
     /** Show the in-chat card asking to turn on notifications (F-40). */
     val askPush: Boolean = false,
+    /** Action confirm cards (by message ID) whose answer is on its way: their buttons are off. */
+    val confirming: Set<String> = emptySet(),
+    /** The short error line under an action confirm card whose answer failed, by message ID. */
+    val confirmErrors: Map<String, String> = emptyMap(),
 )
 
 internal const val OPEN_POLL_MS = 3_000L
@@ -339,6 +343,53 @@ internal class HolloStore(private val scope: CoroutineScope) {
         }
     }
 
+    /**
+     * The user tapped Confirm or Cancel on an action confirm card. On success
+     * (or a 409: answered elsewhere, or expired) the card locks; on any other
+     * error its buttons come back with a short error line. The AI's reply
+     * arrives with the next poll.
+     */
+    fun answerConfirmation(messageId: String, confirm: Boolean) {
+        val api = client ?: return
+        val card = _state.value.messages.firstOrNull { it.id == messageId }?.confirm ?: return
+        if (messageId in _state.value.confirming) return
+        val startedAt = generation
+        mutate { it.copy(confirming = it.confirming + messageId, confirmErrors = it.confirmErrors - messageId) }
+        scope.launch {
+            val status: String? = try {
+                api.answerConfirmation(card.confirmationId, confirm)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (e is HolloException && e.status == 409) {
+                    CONFIRM_UNAVAILABLE
+                } else {
+                    if (startedAt == generation) {
+                        val line = when {
+                            isOffline(e) -> "You're offline. Try again."
+                            e is HolloException && e.status in 400..499 && !e.message.isNullOrBlank() -> e.message!!
+                            else -> "Couldn't send that. Try again."
+                        }
+                        mutate { it.copy(confirming = it.confirming - messageId, confirmErrors = it.confirmErrors + (messageId to line)) }
+                    }
+                    null
+                }
+            }
+            if (status == null || startedAt != generation) return@launch
+            mutate { s ->
+                s.copy(
+                    messages = s.messages.map { m ->
+                        val c = m.confirm
+                        if (m.id == messageId && c != null) m.copy(confirm = c.copy(status = status)) else m
+                    },
+                    confirming = s.confirming - messageId,
+                    confirmErrors = s.confirmErrors - messageId,
+                )
+            }
+            refresh()
+        }
+    }
+
     /** Reports a link card tap for the dashboard's counts. Never throws. */
     fun linkTapped(messageId: String, opened: Boolean) {
         scope.launch { ignoreErrors { client?.linkTapped(messageId, opened) } }
@@ -353,6 +404,8 @@ internal class HolloStore(private val scope: CoroutineScope) {
                 unread = 0,
                 pushRegistered = false,
                 askPush = false,
+                confirming = emptySet(),
+                confirmErrors = emptyMap(),
             )
         }
         // Signing out makes a new device, so it needs the push token again.

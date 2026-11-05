@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hollo/src/cards.dart';
 import 'package:hollo/src/client.dart';
 import 'package:hollo/src/models.dart';
 import 'package:hollo/src/storage.dart';
@@ -291,6 +292,79 @@ void main() {
     await store.signOut();
     expect(registrations, 2);
     expect(store.messages, isEmpty);
+  });
+
+  test('answers confirm cards, and locks them when the server says no',
+      () async {
+    const first = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    const second = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    var failNext = true;
+    final server = FakeServer({
+      'POST /devices': registered(),
+      'GET /messages': (_) => reply(200, {'messages': [], 'unread': 0}),
+      'POST /confirmations': (request) {
+        final fields = jsonDecode(request.body) as Map<String, Object?>;
+        if (fields['id'] == second) {
+          return reply(409, {
+            'error': {'code': 'not_pending', 'message': 'Already answered.'},
+          });
+        }
+        if (failNext) {
+          failNext = false;
+          return reply(500, {
+            'error': {'code': 'server_error', 'message': 'Oops'},
+          });
+        }
+        return reply(200, {'status': 'confirmed'});
+      },
+    });
+    final store = HolloStore();
+    addTearDown(store.close);
+    await store.start(clientFor(server));
+    const card = HolloConfirmation(
+      id: first,
+      title: 'Restore lost streak',
+      summary: '',
+      inputs: [],
+      risk: 'low',
+      state: HolloConfirmState.pending,
+    );
+
+    // A server error leaves the card open with a short line.
+    final answering = store.answerConfirmation(first, confirm: true);
+    expect(store.isDeciding(first), isTrue);
+    await answering;
+    expect(store.isDeciding(first), isFalse);
+    expect(store.confirmState(card), HolloConfirmState.pending);
+    expect(store.decideError(first), isNotNull);
+
+    await store.answerConfirmation(first, confirm: true);
+    expect(store.confirmState(card), HolloConfirmState.confirmed);
+    expect(store.decideError(first), isNull);
+    expect(
+      jsonDecode(server.to('POST', '/confirmations').last.body),
+      {'id': first, 'decision': 'confirm'},
+    );
+
+    // Answered already: a second tap sends nothing.
+    await store.answerConfirmation(first, confirm: false);
+    expect(server.to('POST', '/confirmations'), hasLength(2));
+
+    await store.answerConfirmation(second, confirm: false);
+    expect(
+      jsonDecode(server.to('POST', '/confirmations').last.body),
+      {'id': second, 'decision': 'cancel'},
+    );
+    const other = HolloConfirmation(
+      id: second,
+      title: 'Restore lost streak',
+      summary: '',
+      inputs: [],
+      risk: 'low',
+      state: HolloConfirmState.pending,
+    );
+    expect(store.confirmState(other), HolloConfirmState.unavailable);
+    expect(store.decideError(second), isNull);
   });
 
   test('calls before start explain what to do', () async {

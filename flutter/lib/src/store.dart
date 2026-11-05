@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'cards.dart';
 import 'client.dart';
 import 'models.dart';
 
@@ -50,6 +51,13 @@ class HolloStore extends ChangeNotifier {
   bool _pushRegistered = false;
   bool _askPush = false;
 
+  // Action confirm cards answered on this device, by confirmation ID. The
+  // message itself never changes here, because polling only adds new ones.
+  final Map<String, HolloConfirmState> _decided =
+      <String, HolloConfirmState>{};
+  final Set<String> _deciding = <String>{};
+  final Map<String, String> _decideErrors = <String, String>{};
+
   bool get started => _client != null;
 
   /// A chat (presented or embedded) is on screen.
@@ -91,6 +99,8 @@ class HolloStore extends ChangeNotifier {
     _client = client;
     _closed = false;
     _messages = const <HolloMessage>[];
+    _decided.clear();
+    _decideErrors.clear();
     _error = null;
     unreadCount.value = 0;
     notifyListeners();
@@ -279,6 +289,49 @@ class HolloStore extends ChangeNotifier {
     await _reload();
   }
 
+  /// An action confirm card's state, with any answer given here on top of
+  /// what the server sent.
+  HolloConfirmState confirmState(HolloConfirmation card) =>
+      _decided[card.id] ?? card.state;
+
+  /// The card's answer is on its way, so its buttons are off.
+  bool isDeciding(String id) => _deciding.contains(id);
+
+  /// Why the last answer to this card failed, or null.
+  String? decideError(String id) => _decideErrors[id];
+
+  /// The user tapped Confirm or Cancel. The card updates straight away; the
+  /// AI's reply arrives with the next poll. Never throws.
+  Future<void> answerConfirmation(String id, {required bool confirm}) async {
+    final client = _client;
+    if (client == null || _deciding.contains(id) || _decided.containsKey(id)) {
+      return;
+    }
+    _deciding.add(id);
+    _decideErrors.remove(id);
+    notifyListeners();
+    try {
+      final status = await client.confirmAction(id, confirm: confirm);
+      _decided[id] = status == 'cancelled'
+          ? HolloConfirmState.cancelled
+          : HolloConfirmState.confirmed;
+    } on HolloError catch (error) {
+      if (error.status == 409) {
+        // Answered on another device, or it ran out of time.
+        _decided[id] = HolloConfirmState.unavailable;
+      } else {
+        _decideErrors[id] = error.code == 'not_verified'
+            ? 'Sign in to confirm this.'
+            : "Couldn't send that. Try again.";
+      }
+    } catch (_) {
+      _decideErrors[id] = "Couldn't send that. Try again.";
+    } finally {
+      _deciding.remove(id);
+      notifyListeners();
+    }
+  }
+
   /// Reports a link card tap for the dashboard's counts. Never throws.
   void linkTapped(String messageId, bool opened) {
     final client = _client;
@@ -289,6 +342,8 @@ class HolloStore extends ChangeNotifier {
 
   Future<void> _reload() async {
     _messages = const <HolloMessage>[];
+    _decided.clear();
+    _decideErrors.clear();
     unreadCount.value = 0;
     notifyListeners();
     // Signing in or out can mean a new device, which needs the token again.

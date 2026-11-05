@@ -14,7 +14,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { MAX_PHOTOS, type HolloMessage, type HolloOffer } from "./client";
+import {
+  MAX_PHOTOS,
+  readConfirmation,
+  type HolloMessage,
+  type HolloOffer,
+} from "./client";
 import { reviewUrl } from "./links";
 import { PhotoMessage, PhotoViewer } from "./photo-viewer";
 import {
@@ -144,6 +149,19 @@ export function HolloChat({
           </View>
         }
         renderItem={({ item }) => {
+          if (item.kind === "action_confirm") {
+            const card = readConfirmation(item);
+            if (card) {
+              return (
+                <ConfirmCard
+                  messageId={item.id}
+                  card={card}
+                  store={store}
+                  theme={theme}
+                />
+              );
+            }
+          }
           if (
             item.kind === "review_request" ||
             item.kind === "offer" ||
@@ -524,6 +542,104 @@ function Card({
       >
         <Text style={{ color: theme.onAccent, fontWeight: "600" }}>{cta}</Text>
       </Pressable>
+    </View>
+  );
+}
+
+/**
+ * An action's confirm card (F-42): exactly what will change, with Confirm
+ * and Cancel. Nothing runs until the user taps Confirm (or replies yes).
+ */
+function ConfirmCard({
+  messageId,
+  card,
+  store,
+  theme,
+}: {
+  messageId: string;
+  card: NonNullable<ReturnType<typeof readConfirmation>>;
+  store: HolloStore;
+  theme: ChatColors;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [gone, setGone] = useState(false);
+
+  async function answer(decision: "confirm" | "cancel") {
+    setBusy(true);
+    setProblem(null);
+    const result = await store.confirmAction(messageId, card.id, decision);
+    setBusy(false);
+    if (result === "gone") setGone(true);
+    if (result === "error") setProblem("Couldn't send. Try again.");
+  }
+
+  const done = gone
+    ? "No longer available"
+    : card.state === "confirmed"
+      ? "Confirmed"
+      : card.state === "cancelled"
+        ? "Cancelled"
+        : card.state === "expired"
+          ? "Expired"
+          : null;
+
+  return (
+    <View style={[styles.card, { borderColor: theme.bubble }]}>
+      <Text style={[styles.cardTitle, { color: theme.text }]}>
+        {card.title}
+      </Text>
+      {!!card.summary && (
+        <Text style={[styles.cardText, { color: theme.text }]}>
+          {card.summary}
+        </Text>
+      )}
+      {card.inputs.map((i) => (
+        <Text key={i.label} style={[styles.cardText, { color: theme.muted }]}>
+          {i.label}: {i.value}
+        </Text>
+      ))}
+      {done ? (
+        <Text style={[styles.cardText, { color: theme.muted, marginTop: 8 }]}>
+          {done}
+        </Text>
+      ) : (
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={() => void answer("cancel")}
+            disabled={busy}
+            accessibilityRole="button"
+            style={[
+              styles.cardButton,
+              styles.cardButtonHalf,
+              {
+                borderWidth: 1,
+                borderColor: theme.text,
+                opacity: busy ? 0.5 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: theme.text, fontWeight: "600" }}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void answer("confirm")}
+            disabled={busy}
+            accessibilityRole="button"
+            style={[
+              styles.cardButton,
+              styles.cardButtonHalf,
+              { backgroundColor: theme.accent, opacity: busy ? 0.5 : 1 },
+            ]}
+          >
+            <Text style={{ color: theme.onAccent, fontWeight: "600" }}>
+              {busy ? "…" : "Confirm"}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+      {problem && (
+        <Text style={[styles.cardText, { color: theme.muted }]}>{problem}</Text>
+      )}
     </View>
   );
 }

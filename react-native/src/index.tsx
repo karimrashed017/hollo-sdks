@@ -9,6 +9,7 @@ import type {
   Storage,
 } from "./client";
 import { linkAction } from "./links";
+import { runPaywall, type HolloPaywall } from "./paywalls";
 import { HolloStore } from "./store";
 import { HolloChat as Chat, HolloSheet, useStore, type HolloTheme } from "./ui";
 
@@ -22,6 +23,13 @@ export {
   type HolloUser,
 } from "./client";
 export type { HolloTheme };
+export {
+  adaptyPaywall,
+  revenueCatPaywall,
+  superwallPaywall,
+  type HolloPaywall,
+  type HolloPaywallResult,
+} from "./paywalls";
 
 // Public API: Hollo.start, present, identify, signOut, eraseUserData, the
 // <HolloProvider> that hosts the chat sheet, an embeddable <HolloChat />, and
@@ -79,7 +87,7 @@ export const Hollo = {
         os: `${Platform.OS} ${String(Platform.Version ?? "")}`.trim(),
         // Review requests and other team messages use it to pick wording.
         language: Intl.DateTimeFormat().resolvedOptions().locale,
-        sdk: "react-native 0.1.6",
+        sdk: "react-native 0.1.7",
       },
     });
   },
@@ -107,6 +115,19 @@ export const Hollo = {
    */
   onOffer(handler: (offer: HolloOffer) => void) {
     offerHandler = handler;
+  },
+  /**
+   * Opens a paywall when the user taps an offer card, after the chat closes,
+   * and tracks how it ended (offer_purchased, offer_declined, ...) so
+   * automations can follow up. Replaces onOffer. For example:
+   * Hollo.usePaywall(revenueCatPaywall({ Purchases, RevenueCatUI })).
+   */
+  usePaywall(paywall: HolloPaywall) {
+    offerHandler = (offer) => {
+      void runPaywall(paywall, offer.ref).then((result) =>
+        store.track(`offer_${result}`),
+      );
+    };
   },
   /**
    * Runs when the user taps a link card that opens one of your screens.

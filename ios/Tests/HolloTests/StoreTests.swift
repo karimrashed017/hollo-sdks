@@ -166,6 +166,47 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(server.calls.last?.header("authorization"), "Bearer hdt_fresh_device_token_value")
     }
 
+    func testAnswersAnActionCardAndLocksItOnceDecided() async {
+        let id = "6f1c2a9e-0b3d-4c55-9a77-2e8f0d1b4c3a"
+        let card: [String: Any] = [
+            "id": "c1", "sender": "ai", "kind": "action_confirm", "body": "Restore your streak?",
+            "payload": ["confirmationId": id, "title": "Restore lost streak", "status": "pending"],
+            "created_at": "t1",
+        ]
+        let server = FakeServer([
+            "GET /messages": { _ in (200, ["messages": [card], "unread": 0]) },
+            "POST /confirmations": { _ in (500, ["error": ["code": "server_error", "message": "Oops"]]) },
+        ])
+        let store = makeStore(server)
+        await store.refresh()
+        let message = store.messages[0]
+
+        // A failure brings the buttons back with an error line.
+        await store.answerConfirmation(message, confirm: true).value
+        XCTAssertEqual(store.confirmations["c1"], .failed)
+        let sent = server.calls.last { $0.path == "/confirmations" }
+        XCTAssertEqual(sent?.method, "POST")
+        XCTAssertEqual(sent?.body?["id"] as? String, id)
+        XCTAssertEqual(sent?.body?["decision"] as? String, "confirm")
+        XCTAssertEqual(sent?.header("x-hollo-app-key"), testAppKey)
+        XCTAssertEqual(sent?.header("authorization"), "Bearer hdt_saved")
+
+        server.route("POST /confirmations") { call in
+            XCTAssertEqual(call.body?["decision"] as? String, "cancel")
+            return (200, ["status": "cancelled"])
+        }
+        await store.answerConfirmation(message, confirm: false).value
+        XCTAssertEqual(store.confirmations["c1"], .done(.cancelled))
+        XCTAssertEqual(ActionConfirm(message.payload).state(progress: store.confirmations["c1"]), .cancelled)
+
+        // Already answered elsewhere, or expired: locked, "No longer available".
+        server.route("POST /confirmations") { _ in
+            (409, ["error": ["code": "not_pending", "message": "This card was already answered or has expired."]])
+        }
+        await store.answerConfirmation(message, confirm: true).value
+        XCTAssertEqual(store.confirmations["c1"], .done(.unavailable))
+    }
+
     func testShowsThePushCardAfterTheFirstMessageOnlyOnce() async {
         let server = FakeServer([
             "GET /messages": { _ in

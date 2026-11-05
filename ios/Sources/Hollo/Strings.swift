@@ -35,6 +35,13 @@ struct HolloStrings: Equatable {
     var photoNumber: String
     var closePhoto: String
     var photoFailed: String
+    var confirm: String
+    var cancel: String
+    var confirmed: String
+    var cancelled: String
+    var expired: String
+    var noLongerAvailable: String
+    var confirmFailed: String
     var layoutDirection: LayoutDirection = .leftToRight
 
     /** "Photo", or "Photo 2 of 3" when there are several, for VoiceOver. */
@@ -83,7 +90,14 @@ struct HolloStrings: Equatable {
         photo: "Photo",
         photoNumber: "Photo %1$d of %2$d",
         closePhoto: "Close photo",
-        photoFailed: "Couldn't add that photo."
+        photoFailed: "Couldn't add that photo.",
+        confirm: "Confirm",
+        cancel: "Cancel",
+        confirmed: "Confirmed",
+        cancelled: "Cancelled",
+        expired: "Expired",
+        noLongerAvailable: "No longer available",
+        confirmFailed: "Couldn't send that. Try again."
     )
 
     private static let table: [String: HolloStrings] = [
@@ -117,7 +131,14 @@ struct HolloStrings: Equatable {
             photo: "Foto",
             photoNumber: "Foto %1$d de %2$d",
             closePhoto: "Cerrar foto",
-            photoFailed: "No se pudo añadir la foto."
+            photoFailed: "No se pudo añadir la foto.",
+            confirm: "Confirmar",
+            cancel: "Cancelar",
+            confirmed: "Confirmado",
+            cancelled: "Cancelado",
+            expired: "Caducado",
+            noLongerAvailable: "Ya no está disponible",
+            confirmFailed: "No se pudo enviar. Inténtalo de nuevo."
         ),
         "fr": HolloStrings(
             support: "Assistance",
@@ -148,7 +169,14 @@ struct HolloStrings: Equatable {
             photo: "Photo",
             photoNumber: "Photo %1$d sur %2$d",
             closePhoto: "Fermer la photo",
-            photoFailed: "Impossible d’ajouter cette photo."
+            photoFailed: "Impossible d’ajouter cette photo.",
+            confirm: "Confirmer",
+            cancel: "Annuler",
+            confirmed: "Confirmé",
+            cancelled: "Annulé",
+            expired: "Expiré",
+            noLongerAvailable: "Plus disponible",
+            confirmFailed: "Échec de l’envoi. Réessayez."
         ),
         "de": HolloStrings(
             support: "Support",
@@ -179,7 +207,14 @@ struct HolloStrings: Equatable {
             photo: "Foto",
             photoNumber: "Foto %1$d von %2$d",
             closePhoto: "Foto schließen",
-            photoFailed: "Das Foto konnte nicht hinzugefügt werden."
+            photoFailed: "Das Foto konnte nicht hinzugefügt werden.",
+            confirm: "Bestätigen",
+            cancel: "Abbrechen",
+            confirmed: "Bestätigt",
+            cancelled: "Abgebrochen",
+            expired: "Abgelaufen",
+            noLongerAvailable: "Nicht mehr verfügbar",
+            confirmFailed: "Konnte nicht gesendet werden. Bitte erneut versuchen."
         ),
         "pt": HolloStrings(
             support: "Suporte",
@@ -210,7 +245,14 @@ struct HolloStrings: Equatable {
             photo: "Foto",
             photoNumber: "Foto %1$d de %2$d",
             closePhoto: "Fechar foto",
-            photoFailed: "Não foi possível adicionar a foto."
+            photoFailed: "Não foi possível adicionar a foto.",
+            confirm: "Confirmar",
+            cancel: "Cancelar",
+            confirmed: "Confirmado",
+            cancelled: "Cancelado",
+            expired: "Expirado",
+            noLongerAvailable: "Não está mais disponível",
+            confirmFailed: "Não foi possível enviar. Tente de novo."
         ),
         "it": HolloStrings(
             support: "Assistenza",
@@ -241,7 +283,14 @@ struct HolloStrings: Equatable {
             photo: "Foto",
             photoNumber: "Foto %1$d di %2$d",
             closePhoto: "Chiudi foto",
-            photoFailed: "Impossibile aggiungere la foto."
+            photoFailed: "Impossibile aggiungere la foto.",
+            confirm: "Conferma",
+            cancel: "Annulla",
+            confirmed: "Confermato",
+            cancelled: "Annullato",
+            expired: "Scaduto",
+            noLongerAvailable: "Non più disponibile",
+            confirmFailed: "Invio non riuscito. Riprova."
         ),
     ]
 }

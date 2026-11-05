@@ -2,7 +2,9 @@
 
 The native Android SDK: a Kotlin library with a Jetpack Compose chat screen
 (`HolloChat()`), an activity for View-based apps (`Hollo.present(context)`),
-identify/sign-out/erase, link and offer cards, review requests, automations
+identify/sign-out/erase, link and offer cards, review requests, action
+confirm cards (the AI asks before changing something; Confirm and Cancel call
+`POST /confirmations`), automations
 (`Hollo.track`) and FCM push hand-off. Feature-equivalent to the React Native
 SDK in `../react-native`. A small "Runs on Hollo" line sits under the
 composer; the server hides it with `branding: false` in `GET /messages`.
@@ -27,7 +29,7 @@ dependencyResolutionManagement {
 Then in your app module:
 
 ```kotlin
-implementation("com.github.karimrashed017:hollo-sdks:0.1.6")
+implementation("com.github.karimrashed017:hollo-sdks:0.1.7")
 ```
 
 Your project needs the Kotlin Compose compiler plugin (Kotlin 2.0+) and
@@ -57,6 +59,8 @@ Hollo.signOut()
 lifecycleScope.launch { Hollo.eraseUserData() } // suspend, throws HolloException
 
 Hollo.onOffer { offer -> showPaywall(offer.ref) }
+// Or let Hollo open it and track the result (offer_purchased, ...):
+// Hollo.usePaywall { ref, done -> /* show it, then */ done(HolloPaywallResult.Purchased) }
 Hollo.onLink { link -> navigate(link.screen, link.value) }
 Hollo.track("paywall_declined")
 Hollo.setSubscriber(true)

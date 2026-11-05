@@ -101,3 +101,65 @@ internal fun cardContent(message: HolloMessage, language: String?): CardContent?
 /** The offer a tapped card stands for, passed to Hollo.onOffer. */
 internal fun offerFrom(message: HolloMessage) =
     HolloOffer(ref = message.payload["ref"].orEmpty(), title = message.payload["title"].orEmpty())
+
+// Action confirm cards: the AI asks before it changes something (F-42). Drawn
+// apart from the one-button cards above, with Confirm and Cancel.
+
+internal const val KIND_ACTION_CONFIRM = "action_confirm"
+internal const val CONFIRM_PENDING = "pending"
+internal const val CONFIRM_CONFIRMED = "confirmed"
+internal const val CONFIRM_CANCELLED = "cancelled"
+
+/** Set on the phone when the server answers 409: answered elsewhere, or expired. */
+internal const val CONFIRM_UNAVAILABLE = "unavailable"
+
+/** What an action confirm card shows instead of its buttons, or [PENDING] for the buttons. */
+internal enum class ConfirmState(val label: String) {
+    PENDING(""),
+    CONFIRMED("Confirmed"),
+    CANCELLED("Cancelled"),
+    EXPIRED("Expired"),
+    UNAVAILABLE("No longer available"),
+}
+
+internal fun confirmState(confirm: ActionConfirm, nowMs: Long): ConfirmState = when (confirm.status) {
+    CONFIRM_CONFIRMED -> ConfirmState.CONFIRMED
+    CONFIRM_CANCELLED -> ConfirmState.CANCELLED
+    CONFIRM_UNAVAILABLE -> ConfirmState.UNAVAILABLE
+    else -> {
+        // An unreadable time doesn't lock the card; the server still checks.
+        val expires = confirm.expiresAt?.let { parseIsoMillis(it) }
+        if (expires != null && expires <= nowMs) ConfirmState.EXPIRED else ConfirmState.PENDING
+    }
+}
+
+/** "label: value" for each input, skipping the colon when there's no value. */
+internal fun confirmLines(confirm: ActionConfirm): List<String> =
+    confirm.inputs.map { if (it.value.isEmpty()) it.label else "${it.label}: ${it.value}" }
+
+private val ISO_TIME = Regex(
+    """(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|z|[+-]\d{2}(?::?\d{2})?)?""",
+)
+
+/**
+ * An ISO 8601 time (as Postgres and JavaScript write it) in epoch
+ * milliseconds, or null. By hand because java.time needs API 26 and the SDK
+ * supports 24. No offset is read as UTC.
+ */
+internal fun parseIsoMillis(text: String): Long? {
+    val m = ISO_TIME.matchEntire(text.trim()) ?: return null
+    val g = m.groupValues
+    val calendar = java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC"))
+    calendar.clear()
+    calendar.set(g[1].toInt(), g[2].toInt() - 1, g[3].toInt(), g[4].toInt(), g[5].toInt(), g[6].ifEmpty { "0" }.toInt())
+    val millis = g[7].take(3).padEnd(3, '0').toInt()
+    val offset = g[8]
+    val offsetMinutes = if (offset.isEmpty() || offset == "Z" || offset == "z") {
+        0
+    } else {
+        val digits = offset.substring(1).replace(":", "")
+        val minutes = digits.take(2).toInt() * 60 + digits.drop(2).ifEmpty { "0" }.toInt()
+        if (offset[0] == '-') -minutes else minutes
+    }
+    return calendar.timeInMillis + millis - offsetMinutes * 60_000L
+}

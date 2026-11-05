@@ -86,7 +86,7 @@ enum Presenter {
         dismiss(then: action)
     }
 
-    private static func topViewController() -> UIViewController? {
+    static func topViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
         guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first,

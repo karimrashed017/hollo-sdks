@@ -167,6 +167,102 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(ChatStyle.scheme(remote: RemoteTheme(), local: nil, system: .dark), .dark)
     }
 
+    func testDecodesAnActionConfirmCard() throws {
+        let response = try decode(MessagesResponse.self, """
+        {"messages": [
+          {"id": "m1", "sender": "ai", "kind": "action_confirm", "body": "Restore your streak to 41 days?",
+           "payload": {"confirmationId": "6f1c2a9e-0b3d-4c55-9a77-2e8f0d1b4c3a", "title": "Restore lost streak",
+                       "summary": "Restore your streak to 41 days",
+                       "inputs": [{"label": "Streak days", "value": "41"}, {"label": "Bonus", "value": 2}],
+                       "risk": "low", "status": "pending", "expiresAt": "2026-11-05T12:00:00.000Z"},
+           "created_at": "t1"}
+        ]}
+        """)
+        let message = try XCTUnwrap(response.messages.first)
+        XCTAssertTrue(message.isActionConfirm)
+        // It has its own card, so the one-button card never draws it.
+        XCTAssertFalse(message.isCard)
+        XCTAssertEqual(message.sender, .ai)
+
+        let card = ActionConfirm(message.payload)
+        XCTAssertEqual(card.confirmationId, "6f1c2a9e-0b3d-4c55-9a77-2e8f0d1b4c3a")
+        XCTAssertEqual(card.title, "Restore lost streak")
+        XCTAssertEqual(card.summary, "Restore your streak to 41 days")
+        XCTAssertEqual(card.inputs, [
+            ActionConfirm.Input(label: "Streak days", value: "41"),
+            ActionConfirm.Input(label: "Bonus", value: "2"),
+        ])
+        XCTAssertEqual(card.risk, "low")
+        XCTAssertEqual(card.expiresAt, Date(timeIntervalSince1970: 1_793_880_000))
+        XCTAssertEqual(ActionConfirmCard.line(card.inputs[0]), "Streak days: 41")
+
+        let before = Date(timeIntervalSince1970: 1_793_879_999)
+        let after = Date(timeIntervalSince1970: 1_793_880_001)
+        XCTAssertEqual(card.state(now: before), .pending)
+        XCTAssertEqual(card.state(now: after), .expired)
+        // What the user did on this device wins over the payload.
+        XCTAssertEqual(card.state(progress: .sending, now: after), .pending)
+        XCTAssertEqual(card.state(progress: .failed, now: before), .pending)
+        XCTAssertEqual(card.state(progress: .done(.cancelled), now: before), .cancelled)
+        XCTAssertEqual(card.state(progress: .done(.unavailable), now: before), .unavailable)
+    }
+
+    func testActionConfirmCardShowsTheServersStatus() {
+        func card(_ payload: Payload) -> ActionConfirm { ActionConfirm(payload) }
+        let id: JSONValue = .string("6f1c2a9e-0b3d-4c55-9a77-2e8f0d1b4c3a")
+        XCTAssertEqual(card(["confirmationId": id, "status": .string("confirmed")]).state(), .confirmed)
+        XCTAssertEqual(card(["confirmationId": id, "status": .string("cancelled")]).state(), .cancelled)
+        // A status newer than the SDK never offers buttons.
+        XCTAssertEqual(card(["confirmationId": id, "status": .string("running")]).state(), .unavailable)
+        // Without an expiry the card waits; an expiry without fractions still reads.
+        XCTAssertEqual(card(["confirmationId": id]).state(), .pending)
+        XCTAssertEqual(
+            card(["expiresAt": .string("2026-11-05T12:00:00+00:00")]).expiresAt,
+            Date(timeIntervalSince1970: 1_793_880_000)
+        )
+    }
+
+    func testActionConfirmToleratesMissingAndOddFields() throws {
+        let response = try decode(MessagesResponse.self, """
+        {"messages": [
+          {"id": "m1", "sender": "ai", "kind": "action_confirm", "body": "Confirm the change?", "created_at": "t1"},
+          {"id": "m2", "sender": "ai", "kind": "action_confirm", "body": "",
+           "payload": {"confirmationId": 7, "title": null, "inputs": [{"label": "Days"}, "x", {"value": true}, {}],
+                       "status": null, "expiresAt": "soon"},
+           "created_at": "t2"},
+          {"id": "m3", "sender": "ai", "kind": "action_confirm", "body": "", "payload": {"inputs": {"a": 1}},
+           "created_at": "t3"}
+        ]}
+        """)
+        XCTAssertEqual(response.messages.map(\.id), ["m1", "m2", "m3"])
+
+        let empty = ActionConfirm(response.messages[0].payload)
+        XCTAssertEqual(empty.title, "")
+        XCTAssertEqual(empty.inputs, [])
+        XCTAssertNil(empty.expiresAt)
+        // Nothing to answer without an ID.
+        XCTAssertEqual(empty.state(), .unavailable)
+
+        let odd = ActionConfirm(response.messages[1].payload)
+        XCTAssertEqual(odd.confirmationId, "")
+        XCTAssertEqual(odd.inputs, [
+            ActionConfirm.Input(label: "Days", value: ""),
+            ActionConfirm.Input(label: "", value: "true"),
+        ])
+        XCTAssertNil(odd.expiresAt)
+        XCTAssertEqual(ActionConfirmCard.line(odd.inputs[0]), "Days")
+        XCTAssertEqual(ActionConfirmCard.line(odd.inputs[1]), "true")
+
+        XCTAssertEqual(ActionConfirm(response.messages[2].payload).inputs, [])
+    }
+
+    func testActionConfirmLabelsAreTranslated() {
+        XCTAssertEqual(HolloStrings.english.confirm, "Confirm")
+        XCTAssertEqual(HolloStrings.english.noLongerAvailable, "No longer available")
+        XCTAssertEqual(HolloStrings.forLanguage("fr").cancel, "Annuler")
+        XCTAssertEqual(HolloStrings.forLanguage("de").expired, "Abgelaufen")
+    }
+
     func testPushSettingsFallBackToDefaults() throws {
         let push = try decode(PushSettings.self, #"{"permissionCard": "sometimes"}"#)
         XCTAssertEqual(push, .default)

@@ -9,6 +9,15 @@ import os
 
 let logger = Logger(subsystem: "so.hollo", category: "Hollo")
 
+/** Where an action card the user tapped stands on this device. */
+enum ConfirmationProgress: Hashable, Sendable {
+    /** Waiting for the server; both buttons are off. */
+    case sending
+    /** It didn't go through; the buttons come back with an error line. */
+    case failed
+    case done(ActionConfirm.State)
+}
+
 @MainActor
 @Observable
 final class HolloStore {
@@ -37,6 +46,8 @@ final class HolloStore {
     private(set) var askPush = false
     /** How many chat views are on screen; a sheet and an embedded tab can overlap. */
     private(set) var visibleChats = 0
+    /** Action cards the user answered on this device, by message ID. */
+    private(set) var confirmations: [String: ConfirmationProgress] = [:]
 
     var isOpen: Bool { visibleChats > 0 }
 
@@ -77,6 +88,7 @@ final class HolloStore {
         outbox = []
         unread = 0
         offline = false
+        confirmations = [:]
         // The app delegate may hand over the push token before start runs.
         if let pushToken { registerPush(token: pushToken, sandbox: pushSandbox) }
         restartPolling()
@@ -363,6 +375,37 @@ final class HolloStore {
         Task { try? await client.linkTapped(messageId: messageId, opened: opened) }
     }
 
+    // MARK: Action cards
+
+    /**
+     * The user tapped Confirm or Cancel on an action card. The AI's reply
+     * then arrives with the normal poll.
+     */
+    @discardableResult
+    func answerConfirmation(_ message: HolloMessage, confirm: Bool) -> Task<Void, Never> {
+        let card = ActionConfirm(message.payload)
+        guard let client, !card.confirmationId.isEmpty,
+              confirmations[message.id] != .sending
+        else { return Task {} }
+        confirmations[message.id] = .sending
+        let epoch = self.epoch
+        return Task { [weak self] in
+            let result: ConfirmationProgress
+            do {
+                let status = try await client.decideConfirmation(id: card.confirmationId, confirm: confirm)
+                result = .done(status == "cancelled" ? .cancelled : .confirmed)
+            } catch let error as HolloError where error.status == 409 {
+                // Already answered (on another device, say) or expired.
+                result = .done(.unavailable)
+            } catch {
+                logger.error("Hollo couldn't answer an action card: \((error as? HolloError)?.code ?? "unknown", privacy: .public)")
+                result = .failed
+            }
+            guard let self, epoch == self.epoch else { return }
+            self.confirmations[message.id] = result
+        }
+    }
+
     /** Runs work after everything queued before it, so calls keep their order. */
     private func enqueue(_ work: @escaping @MainActor () async -> Void) {
         let previous = queue
@@ -382,6 +425,7 @@ final class HolloStore {
         messages = []
         unread = 0
         askPush = false
+        confirmations = [:]
         if clearOutbox { outbox = [] }
         // A new device on the server needs the push token again.
         if let pushToken, let client {

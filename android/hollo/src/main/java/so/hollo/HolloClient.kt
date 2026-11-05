@@ -183,6 +183,23 @@ internal class HolloClient(
         )
     }
 
+    /**
+     * Answers an action confirm card. Returns the new status, "confirmed" or
+     * "cancelled". A 409 (already answered or expired) throws like any error.
+     */
+    suspend fun answerConfirmation(confirmationId: String, confirm: Boolean): String {
+        val data = call(
+            "/confirmations",
+            method = "POST",
+            body = buildJsonObject {
+                put("id", confirmationId)
+                put("decision", if (confirm) "confirm" else "cancel")
+            },
+        )
+        return data.string("status")?.takeIf { it == CONFIRM_CONFIRMED || it == CONFIRM_CANCELLED }
+            ?: if (confirm) CONFIRM_CONFIRMED else CONFIRM_CANCELLED
+    }
+
     /** Reports an event or the subscription status. Returns whether to open the chat. */
     suspend fun event(name: String? = null, subscriber: Boolean? = null): Boolean {
         val body = buildJsonObject {

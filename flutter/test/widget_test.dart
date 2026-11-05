@@ -45,6 +45,12 @@ FakeServer chatServer(List<Map<String, Object?>> messages) {
         }),
     'POST /read': (_) => reply(200, {'unread': 0}),
     'POST /links/tap': (_) => reply(200, {'ok': true}),
+    'POST /confirmations': (request) {
+      final fields = jsonDecode(request.body) as Map<String, Object?>;
+      return reply(200, {
+        'status': fields['decision'] == 'confirm' ? 'confirmed' : 'cancelled',
+      });
+    },
   });
 }
 
@@ -150,6 +156,62 @@ void main() {
     expect(link?.value, 'A123');
     final tap = server.to('POST', '/links/tap').single;
     expect(jsonDecode(tap.body), {'messageId': '2', 'opened': true});
+
+    Hollo.debugReset();
+  });
+
+  testWidgets('a confirm card sends the answer, then shows it',
+      (tester) async {
+    const id = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    final server = chatServer([
+      message(
+        '1',
+        'ai',
+        'Restore your streak to 41 days?',
+        kind: 'action_confirm',
+        payload: {
+          'confirmationId': id,
+          'title': 'Restore lost streak',
+          'summary': 'Restore your streak to 41 days',
+          'inputs': [
+            {'label': 'Streak days', 'value': '41'},
+          ],
+          'risk': 'low',
+          'status': 'pending',
+          'expiresAt': '2999-01-01T00:00:00.000Z',
+        },
+      ),
+      message(
+        '2',
+        'ai',
+        'That one ran out of time.',
+        kind: 'action_confirm',
+        payload: {
+          'confirmationId': '0f8fad5b-d9cb-469f-a165-70867728950e',
+          'title': 'Old change',
+          'status': 'pending',
+          'expiresAt': '2020-01-01T00:00:00.000Z',
+        },
+      ),
+    ]);
+    await Hollo.start(appKey: appKey, httpClient: server.client);
+    await tester.pumpWidget(const MaterialApp(home: HolloChat()));
+    await load(tester);
+
+    expect(find.text('Restore lost streak'), findsOneWidget);
+    expect(find.text('Restore your streak to 41 days'), findsOneWidget);
+    expect(find.text('Streak days: 41'), findsOneWidget);
+    expect(find.text('Expired'), findsOneWidget);
+    expect(find.text('Confirm'), findsOneWidget, reason: 'one card waits');
+
+    await tester.tap(find.text('Confirm'));
+    await load(tester);
+    expect(
+      jsonDecode(server.to('POST', '/confirmations').single.body),
+      {'id': id, 'decision': 'confirm'},
+    );
+    expect(find.text('Confirmed'), findsOneWidget);
+    expect(find.text('Confirm'), findsNothing);
 
     Hollo.debugReset();
   });
